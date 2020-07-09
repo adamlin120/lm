@@ -108,10 +108,6 @@ class ConditionalLM(LightningModule):
         return optimizer
 
     def prepare_data(self):
-        self.personachat = get_dataset(self.tokenizer,
-                                       self.hparams.dataset_path,
-                                       self.hparams.dataset_cache)
-
         train_tensor_dataset_cache_path = Path(
             f'./tensor_dataset_cache_train_{self.hparams.model_checkpoint}_'
             f'{self.hparams.dataset_path}.pt')
@@ -129,6 +125,10 @@ class ConditionalLM(LightningModule):
             self.valid_dataset = \
                 torch.load(valid_tensor_dataset_cache_path.open('rb'))
         else:
+            self.personachat = get_dataset(self.tokenizer,
+                                           self.hparams.dataset_path,
+                                           self.hparams.dataset_cache)
+
             logging.info("Build inputs and labels")
             datasets = {"train": defaultdict(list), "valid": defaultdict(list)}
             for dataset_name, dataset in self.personachat.items():
