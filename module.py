@@ -245,7 +245,7 @@ def pad_dataset(dataset, padding=0):
         dataset[name] = [
             x +
             [padding if name != "labels" else IGNORE_INDEX] * (max_l -
-                                                                  len(x))
+                                                               len(x))
             for x in dataset[name]
         ]
     return dataset
@@ -284,8 +284,8 @@ def build_input_from_segments(persona, history, reply, tokenizer,
     instance["labels"] = [IGNORE_INDEX] * len(instance["input_ids"])
     if labels:
         instance["labels"] = ([IGNORE_INDEX] * sum(len(s)
-                                                      for s in sequence[:-1]
-                                                      )
-                                 ) + \
-                                [IGNORE_INDEX] + sequence[-1][1:]
+                                                   for s in sequence[:-1]
+                                                   )
+                              ) + \
+                             [IGNORE_INDEX] + sequence[-1][1:]
     return instance
