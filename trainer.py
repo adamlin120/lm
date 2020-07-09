@@ -20,6 +20,11 @@ def parse_args():
 
     parser = LightningTemplateModel.add_model_specific_args(parser)
     parser = Trainer.add_argparse_args(parser)
+
+    parser.set_defaults(accumulate_grad_batches=8,
+                        gradient_clip_val=1.0,
+                        )
+
     args = parser.parse_args()
     return args
 
