@@ -10,3 +10,4 @@ runs/
 .DS_Store
 gpt_personachat_cache_v2/
 *dataset_cache*
+lightning_logs/
