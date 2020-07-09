@@ -165,7 +165,8 @@ class ConditionalLM(LightningModule):
         return DataLoader(self.train_dataset,
                           batch_size=self.hparams.batch_size,
                           num_workers=self.hparams.num_workers,
-                          pin_memory=True
+                          pin_memory=True,
+                          shuffle=True,
                           )
 
     def val_dataloader(self):
