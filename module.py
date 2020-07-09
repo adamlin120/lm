@@ -2,6 +2,7 @@ import logging
 from argparse import ArgumentParser, Namespace
 from collections import defaultdict
 from itertools import chain
+from pathlib import Path
 
 import torch
 import torch.nn as nn
@@ -111,51 +112,74 @@ class ConditionalLM(LightningModule):
                                        self.hparams.dataset_path,
                                        self.hparams.dataset_cache)
 
+        train_tensor_dataset_cache_path = Path(
+            f'./tensor_dataset_cache_train_{self.hparams.model_checkpoint}_'
+            f'{self.hparams.dataset_path}')
+        valid_tensor_dataset_cache_path = Path(
+            f'./tensor_dataset_cache_valid_{self.hparams.model_checkpoint}_'
+            f'{self.hparams.dataset_path}')
+        if train_tensor_dataset_cache_path.exists() and \
+                valid_tensor_dataset_cache_path.exists():
+            logging.info(f"Train tensor dataset loaded from"
+                         f"{train_tensor_dataset_cache_path}")
+            logging.info(f"Valid tensor dataset loaded from"
+                         f"{valid_tensor_dataset_cache_path}")
+            self.train_dataset = \
+                torch.load(train_tensor_dataset_cache_path.open('rb'))
+            self.valid_dataset = \
+                torch.load(valid_tensor_dataset_cache_path.open('rb'))
+        else:
+            logging.info("Build inputs and labels")
+            datasets = {"train": defaultdict(list), "valid": defaultdict(list)}
+            for dataset_name, dataset in self.personachat.items():
+                num_candidates = len(dataset[0]["utterances"][0]["candidates"])
+                if num_candidates > 0 and dataset_name == 'train':
+                    num_candidates = min(num_candidates, num_candidates)
+                for dialog in dataset:
+                    persona = dialog["personality"].copy()
+                    for _ in range(self.hparams.personality_permutations):
+                        for utterance in dialog["utterances"]:
+                            history = utterance["history"] \
+                                [-(2 * self.hparams.max_history + 1):]
+                            for j, candidate in enumerate(
+                                    utterance["candidates"][-num_candidates:]):
+                                labels = bool(j == num_candidates - 1)
+                                instance = build_input_from_segments(
+                                    persona, history, candidate,
+                                    self.tokenizer, labels)
+                                for input_name, input_array in instance.items():
+                                    datasets[dataset_name][input_name].append(
+                                        input_array)
+                            datasets[dataset_name]["mc_labels"].append(
+                                num_candidates - 1)
+                            datasets[dataset_name]["n_candidates"] = \
+                                num_candidates
+                        # permuted personalities
+                        persona = [persona[-1]] + persona[:-1]
+
+            logging.info("Pad inputs and convert to Tensor")
+            tensor_datasets = {"train": [], "valid": []}
+            for dataset_name, dataset in datasets.items():
+                dataset = pad_dataset(
+                    dataset, self.tokenizer.convert_tokens_to_ids(PAD))
+                for input_name in MODEL_INPUTS:
+                    tensor = torch.tensor(dataset[input_name])
+                    if input_name != "mc_labels":
+                        tensor = tensor.view((-1, datasets[dataset_name][
+                            "n_candidates"]) + tensor.shape[1:])
+                    tensor_datasets[dataset_name].append(tensor)
+
+            self.train_dataset = TensorDataset(*tensor_datasets["train"])
+            self.valid_dataset = TensorDataset(*tensor_datasets["valid"])
+
+            torch.save(self.train_dataset, str(train_tensor_dataset_cache_path))
+            torch.save(self.valid_dataset, str(valid_tensor_dataset_cache_path))
+            logging.info(f"Train tensor dataset saved to "
+                         f"{train_tensor_dataset_cache_path}")
+            logging.info(f"Valid tensor dataset saved to "
+                         f"{valid_tensor_dataset_cache_path}")
+
     def setup(self, stage):
-        logging.info("Build inputs and labels")
-        datasets = {"train": defaultdict(list), "valid": defaultdict(list)}
-        for dataset_name, dataset in self.personachat.items():
-            num_candidates = len(dataset[0]["utterances"][0]["candidates"])
-            if num_candidates > 0 and dataset_name == 'train':
-                num_candidates = min(num_candidates, num_candidates)
-            for dialog in dataset:
-                persona = dialog["personality"].copy()
-                for _ in range(self.hparams.personality_permutations):
-                    for utterance in dialog["utterances"]:
-                        history = utterance["history"] \
-                            [-(2 * self.hparams.max_history + 1):]
-                        for j, candidate in enumerate(
-                                utterance["candidates"][-num_candidates:]):
-                            labels = bool(j == num_candidates - 1)
-                            instance = build_input_from_segments(persona,
-                                                                 history,
-                                                                 candidate,
-                                                                 self.tokenizer,
-                                                                 labels)
-                            for input_name, input_array in instance.items():
-                                datasets[dataset_name][input_name].append(
-                                    input_array)
-                        datasets[dataset_name]["mc_labels"].append(
-                            num_candidates - 1)
-                        datasets[dataset_name]["n_candidates"] = num_candidates
-                    # permuted personalities
-                    persona = [persona[-1]] + persona[:-1]
-
-        logging.info("Pad inputs and convert to Tensor")
-        tensor_datasets = {"train": [], "valid": []}
-        for dataset_name, dataset in datasets.items():
-            dataset = pad_dataset(dataset,
-                                  padding=self.tokenizer.convert_tokens_to_ids(
-                                      SPECIAL_TOKENS[-1]))
-            for input_name in MODEL_INPUTS:
-                tensor = torch.tensor(dataset[input_name])
-                if input_name != "mc_labels":
-                    tensor = tensor.view((-1, datasets[dataset_name][
-                        "n_candidates"]) + tensor.shape[1:])
-                tensor_datasets[dataset_name].append(tensor)
-
-        self.train_dataset = TensorDataset(*tensor_datasets["train"])
-        self.valid_dataset = TensorDataset(*tensor_datasets["valid"])
         logging.info(f"Train dataset (Batch, Candidates, Seq length): "
                      f"{self.train_dataset.tensors[0].shape}")
         logging.info(f"Valid dataset (Batch, Candidates, Seq length): "
