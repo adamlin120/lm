@@ -5,8 +5,8 @@ from itertools import chain
 
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
 from pytorch_lightning import LightningModule
+from torch.utils.data import DataLoader, TensorDataset
 from transformers import AdamW, OpenAIGPTDoubleHeadsModel, OpenAIGPTTokenizer, \
     GPT2DoubleHeadsModel, GPT2Tokenizer
 
@@ -14,9 +14,12 @@ from utils import get_dataset
 
 IGNORE_INDEX = -100
 SPECIAL_TOKENS = ["<bos>", "<eos>", "<speaker1>", "<speaker2>", "<pad>"]
-ATTR_TO_SPECIAL_TOKEN = {'bos_token': '<bos>', 'eos_token': '<eos>', 'pad_token': '<pad>',
-                         'additional_special_tokens': ['<speaker1>', '<speaker2>']}
-MODEL_INPUTS = ["input_ids", "mc_token_ids", "lm_labels", "mc_labels", "token_type_ids"]
+ATTR_TO_SPECIAL_TOKEN = {'bos_token': '<bos>', 'eos_token': '<eos>',
+                         'pad_token': '<pad>',
+                         'additional_special_tokens': ['<speaker1>',
+                                                       '<speaker2>']}
+MODEL_INPUTS = ["input_ids", "mc_token_ids", "lm_labels", "mc_labels",
+                "token_type_ids"]
 PADDED_INPUTS = ["input_ids", "lm_labels", "token_type_ids"]
 
 
@@ -115,7 +118,7 @@ class LightningTemplateModel(LightningModule):
                 persona = dialog["personality"].copy()
                 for _ in range(self.hparams.personality_permutations):
                     for utterance in dialog["utterances"]:
-                        history = utterance["history"]\
+                        history = utterance["history"] \
                             [-(2 * self.hparams.max_history + 1):]
                         for j, candidate in enumerate(
                                 utterance["candidates"][-num_candidates:]):
@@ -206,32 +209,54 @@ class LightningTemplateModel(LightningModule):
 
 
 def pad_dataset(dataset, padding=0):
-    """ Pad the dataset. This could be optimized by defining a Dataset class and padding at the batch level, but this is simpler. """
+    """ Pad the dataset. This could be optimized by defining a Dataset class
+    and padding at the batch level, but this is simpler. """
     max_l = max(len(x) for x in dataset["input_ids"])
     for name in PADDED_INPUTS:
-        dataset[name] = [x + [padding if name != "lm_labels" else -100] * (max_l - len(x)) for x in dataset[name]]
+        dataset[name] = [
+            x +
+            [padding if name != "lm_labels" else IGNORE_INDEX] * (max_l -
+                                                                  len(x))
+            for x in dataset[name]
+        ]
     return dataset
 
 
 def add_special_tokens_(model, tokenizer):
-    """ Add special tokens to the tokenizer and the model if they have not already been added. """
+    """ Add special tokens to the tokenizer and the model if they have not
+    already been added. """
     orig_num_tokens = len(tokenizer.encoder)
-    num_added_tokens = tokenizer.add_special_tokens(ATTR_TO_SPECIAL_TOKEN) # doesn't add if they are already there
+    # doesn't add if they are already there
+    num_added_tokens = tokenizer.add_special_tokens(ATTR_TO_SPECIAL_TOKEN)
     if num_added_tokens > 0:
-        model.resize_token_embeddings(new_num_tokens=orig_num_tokens + num_added_tokens)
+        model.resize_token_embeddings(new_num_tokens=orig_num_tokens +
+                                                     num_added_tokens)
 
 
-def build_input_from_segments(persona, history, reply, tokenizer, lm_labels=False, with_eos=True):
-    """ Build a sequence of input from 3 segments: persona, history and last reply. """
+def build_input_from_segments(persona, history, reply, tokenizer,
+                              lm_labels=False, with_eos=True):
+    """ Build a sequence of input from 3 segments: persona, history and last
+    reply. """
     bos, eos, speaker1, speaker2 = tokenizer.convert_tokens_to_ids(
         SPECIAL_TOKENS[:-1])
-    sequence = [[bos] + list(chain(*persona))] + history + [reply + ([eos] if with_eos else [])]
-    sequence = [sequence[0]] + [[speaker2 if (len(sequence)-i) % 2 else speaker1] + s for i, s in enumerate(sequence[1:])]
+    sequence = [[bos] + list(chain(*persona))] + \
+               history + \
+               [reply + ([eos] if with_eos else [])]
+    sequence = [sequence[0]] + \
+               [
+                   [speaker2 if (len(sequence) - i) % 2 else speaker1] + s
+                   for i, s in enumerate(sequence[1:])
+               ]
     instance = {}
     instance["input_ids"] = list(chain(*sequence))
-    instance["token_type_ids"] = [speaker2 if i % 2 else speaker1 for i, s in enumerate(sequence) for _ in s]
+    instance["token_type_ids"] = [speaker2 if i % 2 else speaker1
+                                  for i, s in enumerate(sequence) for _ in s]
     instance["mc_token_ids"] = len(instance["input_ids"]) - 1
-    instance["lm_labels"] = [-100] * len(instance["input_ids"])
+    instance["lm_labels"] = [IGNORE_INDEX] * len(instance["input_ids"])
     if lm_labels:
-        instance["lm_labels"] = ([-100] * sum(len(s) for s in sequence[:-1])) + [-100] + sequence[-1][1:]
+        instance["lm_labels"] = ([IGNORE_INDEX] * sum(len(s)
+                                                      for s in sequence[:-1]
+                                                      )
+                                 ) + \
+                                [IGNORE_INDEX] + sequence[-1][1:]
     return instance
