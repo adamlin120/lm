@@ -27,7 +27,7 @@ MODEL_INPUTS = ["input_ids", "mc_token_ids", "labels", "mc_labels",
 PADDED_INPUTS = ["input_ids", "labels", "token_type_ids"]
 
 
-class LightningTemplateModel(LightningModule):
+class ConditionalLM(LightningModule):
     def __init__(self,
                  hparams: Namespace,
                  ):
