@@ -13,14 +13,18 @@ from transformers import AdamW, OpenAIGPTDoubleHeadsModel, OpenAIGPTTokenizer, \
 from utils import get_dataset
 
 IGNORE_INDEX = -100
-SPECIAL_TOKENS = ["<bos>", "<eos>", "<speaker1>", "<speaker2>", "<pad>"]
-ATTR_TO_SPECIAL_TOKEN = {'bos_token': '<bos>', 'eos_token': '<eos>',
-                         'pad_token': '<pad>',
-                         'additional_special_tokens': ['<speaker1>',
-                                                       '<speaker2>']}
-MODEL_INPUTS = ["input_ids", "mc_token_ids", "lm_labels", "mc_labels",
+BOS = "<bos>"
+EOS = "<eos>"
+PAD = "<pad>"
+SPEAKER1 = "<speaker1>"
+SPEAKER2 = "<speaker2>"
+SPECIAL_TOKENS = [BOS, EOS, SPEAKER1, SPEAKER2, PAD]
+ATTR_TO_SPECIAL_TOKEN = {'bos_token': BOS, 'eos_token': EOS,
+                         'pad_token': PAD,
+                         'additional_special_tokens': [SPEAKER1, SPEAKER2]}
+MODEL_INPUTS = ["input_ids", "mc_token_ids", "labels", "mc_labels",
                 "token_type_ids"]
-PADDED_INPUTS = ["input_ids", "lm_labels", "token_type_ids"]
+PADDED_INPUTS = ["input_ids", "labels", "token_type_ids"]
 
 
 class LightningTemplateModel(LightningModule):
@@ -47,12 +51,12 @@ class LightningTemplateModel(LightningModule):
         return self.model(*args, **kwargs)
 
     def training_step(self, batch, batch_idx):
-        input_ids, mc_token_ids, lm_labels, mc_labels, token_type_ids = batch
+        input_ids, mc_token_ids, labels, mc_labels, token_type_ids = batch
         (lm_loss), (mc_loss), *_ = self(input_ids=input_ids,
                                         token_type_ids=token_type_ids,
                                         mc_token_ids=mc_token_ids,
                                         mc_labels=mc_labels,
-                                        lm_labels=lm_labels)
+                                        labels=labels)
         loss = lm_loss * self.hparams.lm_coef + mc_loss * self.hparams.mc_coef
         tensorboard_logs = {
             'train_loss': loss,
@@ -62,14 +66,14 @@ class LightningTemplateModel(LightningModule):
         return {'loss': loss, 'log': tensorboard_logs}
 
     def validation_step(self, batch, batch_idx):
-        input_ids, mc_token_ids, lm_labels, mc_labels, token_type_ids = batch
+        input_ids, mc_token_ids, labels, mc_labels, token_type_ids = batch
         lm_logits, mc_logits, *_ = self.model(input_ids=input_ids,
                                               token_type_ids=token_type_ids,
                                               mc_token_ids=mc_token_ids)
         lm_logits_flat_shifted = \
             lm_logits[..., :-1, :].contiguous().view(-1, lm_logits.size(-1))
-        lm_labels_flat_shifted = lm_labels[..., 1:].contiguous().view(-1)
-        lm_loss = self.criterion(lm_logits_flat_shifted, lm_labels_flat_shifted)
+        labels_flat_shifted = labels[..., 1:].contiguous().view(-1)
+        lm_loss = self.criterion(lm_logits_flat_shifted, labels_flat_shifted)
         mc_loss = self.criterion(mc_logits, mc_labels)
         loss = lm_loss * self.hparams.lm_coef + mc_loss * self.hparams.mc_coef
         mc_preds = mc_logits.argmax(-1)
@@ -122,12 +126,12 @@ class LightningTemplateModel(LightningModule):
                             [-(2 * self.hparams.max_history + 1):]
                         for j, candidate in enumerate(
                                 utterance["candidates"][-num_candidates:]):
-                            lm_labels = bool(j == num_candidates - 1)
+                            labels = bool(j == num_candidates - 1)
                             instance = build_input_from_segments(persona,
                                                                  history,
                                                                  candidate,
                                                                  self.tokenizer,
-                                                                 lm_labels)
+                                                                 labels)
                             for input_name, input_array in instance.items():
                                 datasets[dataset_name][input_name].append(
                                     input_array)
@@ -215,7 +219,7 @@ def pad_dataset(dataset, padding=0):
     for name in PADDED_INPUTS:
         dataset[name] = [
             x +
-            [padding if name != "lm_labels" else IGNORE_INDEX] * (max_l -
+            [padding if name != "labels" else IGNORE_INDEX] * (max_l -
                                                                   len(x))
             for x in dataset[name]
         ]
@@ -234,7 +238,7 @@ def add_special_tokens_(model, tokenizer):
 
 
 def build_input_from_segments(persona, history, reply, tokenizer,
-                              lm_labels=False, with_eos=True):
+                              labels=False, with_eos=True):
     """ Build a sequence of input from 3 segments: persona, history and last
     reply. """
     bos, eos, speaker1, speaker2 = tokenizer.convert_tokens_to_ids(
@@ -252,9 +256,9 @@ def build_input_from_segments(persona, history, reply, tokenizer,
     instance["token_type_ids"] = [speaker2 if i % 2 else speaker1
                                   for i, s in enumerate(sequence) for _ in s]
     instance["mc_token_ids"] = len(instance["input_ids"]) - 1
-    instance["lm_labels"] = [IGNORE_INDEX] * len(instance["input_ids"])
-    if lm_labels:
-        instance["lm_labels"] = ([IGNORE_INDEX] * sum(len(s)
+    instance["labels"] = [IGNORE_INDEX] * len(instance["input_ids"])
+    if labels:
+        instance["labels"] = ([IGNORE_INDEX] * sum(len(s)
                                                       for s in sequence[:-1]
                                                       )
                                  ) + \
