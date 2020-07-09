@@ -114,10 +114,10 @@ class ConditionalLM(LightningModule):
 
         train_tensor_dataset_cache_path = Path(
             f'./tensor_dataset_cache_train_{self.hparams.model_checkpoint}_'
-            f'{self.hparams.dataset_path}')
+            f'{self.hparams.dataset_path}.pt')
         valid_tensor_dataset_cache_path = Path(
             f'./tensor_dataset_cache_valid_{self.hparams.model_checkpoint}_'
-            f'{self.hparams.dataset_path}')
+            f'{self.hparams.dataset_path}.pt')
         if train_tensor_dataset_cache_path.exists() and \
                 valid_tensor_dataset_cache_path.exists():
             logging.info(f"Train tensor dataset loaded from"
