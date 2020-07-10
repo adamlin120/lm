@@ -1,8 +1,11 @@
 import logging
+import json
 from argparse import ArgumentParser, Namespace
-from collections import defaultdict
-from itertools import chain
+from itertools import cycle
 from pathlib import Path
+from random import choice, randrange
+from typing import List, Union
+from collections import defaultdict
 
 import torch
 import torch.nn as nn
@@ -10,19 +13,19 @@ from pytorch_lightning import LightningModule
 from torch.utils.data import DataLoader, TensorDataset
 from transformers import AdamW, OpenAIGPTDoubleHeadsModel, OpenAIGPTTokenizer, \
     GPT2DoubleHeadsModel, GPT2Tokenizer
+from tqdm.auto import tqdm
 
-from utils import get_dataset
 
 IGNORE_INDEX = -100
 BOS = "<bos>"
 EOS = "<eos>"
 PAD = "<pad>"
-SPEAKER1 = "<speaker1>"
-SPEAKER2 = "<speaker2>"
-SPECIAL_TOKENS = [BOS, EOS, SPEAKER1, SPEAKER2, PAD]
+SYSTEM = "<system>"
+USER = "<user>"
+SPECIAL_TOKENS = [BOS, EOS, SYSTEM, USER, PAD]
 ATTR_TO_SPECIAL_TOKEN = {'bos_token': BOS, 'eos_token': EOS,
                          'pad_token': PAD,
-                         'additional_special_tokens': [SPEAKER1, SPEAKER2]}
+                         'additional_special_tokens': [SYSTEM, USER]}
 MODEL_INPUTS = ["input_ids", "mc_token_ids", "labels", "mc_labels",
                 "token_type_ids"]
 PADDED_INPUTS = ["input_ids", "labels", "token_type_ids"]
@@ -109,11 +112,11 @@ class ConditionalLM(LightningModule):
 
     def prepare_data(self):
         train_tensor_dataset_cache_path = Path(
-            f'./tensor_dataset_cache_train_{self.hparams.model_checkpoint}_'
-            f'{self.hparams.dataset_path}.pt')
+            f'tensor_dataset_cache_train_{self.hparams.model_checkpoint}_'
+            f'{self.hparams.dataset_path}.pt'.replace('/', '_SLASH_'))
         valid_tensor_dataset_cache_path = Path(
-            f'./tensor_dataset_cache_valid_{self.hparams.model_checkpoint}_'
-            f'{self.hparams.dataset_path}.pt')
+            f'tensor_dataset_cache_valid_{self.hparams.model_checkpoint}_'
+            f'{self.hparams.dataset_path}.pt'.replace('/', '_SLASH_'))
         if train_tensor_dataset_cache_path.exists() and \
                 valid_tensor_dataset_cache_path.exists():
             logging.info(f"Train tensor dataset loaded from"
@@ -125,47 +128,58 @@ class ConditionalLM(LightningModule):
             self.valid_dataset = \
                 torch.load(valid_tensor_dataset_cache_path.open('rb'))
         else:
-            self.personachat = get_dataset(self.tokenizer,
-                                           self.hparams.dataset_path,
-                                           self.hparams.dataset_cache)
+            datasets = json.loads(
+                Path(self.hparams.dataset_path).read_text())
 
             logging.info("Build inputs and labels")
-            datasets = {"train": defaultdict(list), "valid": defaultdict(list)}
-            for dataset_name, dataset in self.personachat.items():
-                num_candidates = len(dataset[0]["utterances"][0]["candidates"])
-                if num_candidates > 0 and dataset_name == 'train':
-                    num_candidates = min(num_candidates, num_candidates)
-                for dialog in dataset:
-                    persona = dialog["personality"].copy()
-                    for _ in range(self.hparams.personality_permutations):
-                        for utterance in dialog["utterances"]:
-                            history = utterance["history"] \
-                                [-(2 * self.hparams.max_history + 1):]
-                            for j, candidate in enumerate(
-                                    utterance["candidates"][-num_candidates:]):
-                                labels = bool(j == num_candidates - 1)
-                                instance = build_input_from_segments(
-                                    persona, history, candidate,
-                                    self.tokenizer, labels)
-                                for input_name, input_array in instance.items():
-                                    datasets[dataset_name][input_name].append(
-                                        input_array)
-                            datasets[dataset_name]["mc_labels"].append(
-                                num_candidates - 1)
-                            datasets[dataset_name]["n_candidates"] = \
-                                num_candidates
-                        # permuted personalities
-                        persona = [persona[-1]] + persona[:-1]
+            processed_datasets = {
+                'train': defaultdict(list),
+                'valid': defaultdict(list),
+            }
+            num_candidates = 2
+            for dataset_name, dataset in datasets.items():
+                for dial_idx, dialog in tqdm(dataset.items(),
+                                             desc=dataset_name):
+                    def _sample_random_response():
+                        _first = True
+                        while _first or \
+                                random_dial_idx == dial_idx or \
+                                len(random_dial) < 2:
+                            random_dial_idx = choice(list(dataset.keys()))
+                            random_dial = dataset[random_dial_idx]
+                            _first = False
+                        random_turn_idx = randrange(0, len(random_dial) // 2)
+                        return random_dial[random_turn_idx * 2 + 1]
+
+                    for i, response in enumerate(dialog):
+                        if i % 2 == 0:
+                            # skip user turn
+                            continue
+                        history = dialog[i-(2 * self.hparams.max_history + 1):i]
+                        next_user_utterance = dialog[i+1]
+                        random_utterance = _sample_random_response()
+                        for labels, candidate in zip(
+                                [False, True],
+                                [random_utterance, next_user_utterance]):
+                            instance = build_input_from_segments(
+                                history, next_user_utterance, candidate,
+                                labels, self.tokenizer)
+                            for input_name, input_array in instance.items():
+                                processed_datasets[dataset_name][input_name].append(input_array)
+                        processed_datasets[dataset_name]["mc_labels"].append(
+                            num_candidates - 1)
+                        processed_datasets[dataset_name]["n_candidates"] = \
+                            num_candidates
 
             logging.info("Pad inputs and convert to Tensor")
             tensor_datasets = {"train": [], "valid": []}
-            for dataset_name, dataset in datasets.items():
+            for dataset_name, dataset in processed_datasets.items():
                 dataset = pad_dataset(
                     dataset, self.tokenizer.convert_tokens_to_ids(PAD))
                 for input_name in MODEL_INPUTS:
                     tensor = torch.tensor(dataset[input_name])
                     if input_name != "mc_labels":
-                        tensor = tensor.view((-1, datasets[dataset_name][
+                        tensor = tensor.view((-1, processed_datasets[dataset_name][
                             "n_candidates"]) + tensor.shape[1:])
                     tensor_datasets[dataset_name].append(tensor)
 
@@ -205,7 +219,7 @@ class ConditionalLM(LightningModule):
         parser = ArgumentParser(parents=[parent_parser])
 
         parser.add_argument("--dataset_path", type=str,
-                            default="personachat_self_original.debug.json",
+                            default="data/multiwoz2.1.processed.json",
                             help="Path or url of the dataset. If empty "
                                  "download "
                                  "from S3.")
@@ -262,30 +276,49 @@ def add_special_tokens_(model, tokenizer):
                                                      num_added_tokens)
 
 
-def build_input_from_segments(persona, history, reply, tokenizer,
-                              labels=False, with_eos=True):
-    """ Build a sequence of input from 3 segments: persona, history and last
-    reply. """
-    bos, eos, speaker1, speaker2 = tokenizer.convert_tokens_to_ids(
-        SPECIAL_TOKENS[:-1])
-    sequence = [[bos] + list(chain(*persona))] + \
-               history + \
-               [reply + ([eos] if with_eos else [])]
-    sequence = [sequence[0]] + \
-               [
-                   [speaker2 if (len(sequence) - i) % 2 else speaker1] + s
-                   for i, s in enumerate(sequence[1:])
-               ]
-    instance = {}
-    instance["input_ids"] = list(chain(*sequence))
-    instance["token_type_ids"] = [speaker2 if i % 2 else speaker1
-                                  for i, s in enumerate(sequence) for _ in s]
-    instance["mc_token_ids"] = len(instance["input_ids"]) - 1
-    instance["labels"] = [IGNORE_INDEX] * len(instance["input_ids"])
-    if labels:
-        instance["labels"] = ([IGNORE_INDEX] * sum(len(s)
-                                                   for s in sequence[:-1]
-                                                   )
-                              ) + \
-                             [IGNORE_INDEX] + sequence[-1][1:]
+def build_input_from_segments(
+        history: List[str],
+        next_user_utterance: str,
+        reply: str,
+        is_ground_truth_reply: bool,
+        tokenizer: Union[OpenAIGPTTokenizer, GPT2Tokenizer],
+):
+    """ Build a sequence of input from 3 segments: history, next usr reply and
+    next system reply. """
+    def tokenize_to_ids(x: str) -> List[int]:
+        return tokenizer.convert_tokens_to_ids(tokenizer.tokenize(x))
+
+    bos, eos, user, system = tokenizer.convert_tokens_to_ids(
+        [BOS, EOS, USER, SYSTEM])
+    history: List[List[int]] = [
+        tokenize_to_ids(type + ' ' + turn)
+        for turn, type in zip(history, cycle([USER, SYSTEM]))
+    ]
+    next_user_utterance: List[int] = tokenize_to_ids(
+        USER + ' ' + next_user_utterance)
+    reply: List[int] = tokenize_to_ids(SYSTEM + ' ' + reply)
+    sequence = [bos]
+    token_type_ids = [user]
+    for seq, type in zip(history, cycle([user, system])):
+        assert type in [user, system]
+        sequence.extend(seq)
+        token_type_ids.extend([type] * len(seq))
+    num_prompt = len(sequence)
+    sequence.extend(next_user_utterance)
+    token_type_ids.extend([user] * len(next_user_utterance))
+    sequence.extend(reply)
+    token_type_ids.extend([system] * len(reply))
+    sequence.append(eos)
+    token_type_ids.append(system)
+
+    instance = {
+        'input_ids': sequence,
+        'token_type_ids': token_type_ids,
+        'mc_token_ids': len(sequence) - 1,
+        'labels': [IGNORE_INDEX] * num_prompt + sequence[num_prompt:]
+        if is_ground_truth_reply else [IGNORE_INDEX] * len(sequence)
+    }
+    assert len(instance['input_ids']) == \
+           len(instance['token_type_ids']) == \
+           len(instance['labels'])
     return instance
