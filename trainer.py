@@ -21,7 +21,7 @@ def parse_args():
     parser = ConditionalLM.add_model_specific_args(parser)
     parser = Trainer.add_argparse_args(parser)
 
-    parser.set_defaults(accumulate_grad_batches=8,
+    parser.set_defaults(accumulate_grad_batches=4,
                         gradient_clip_val=1.0,
                         )
 

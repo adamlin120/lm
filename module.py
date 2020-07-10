@@ -213,9 +213,9 @@ class ConditionalLM(LightningModule):
                             default='./dataset_cache',
                             help="Path or url of the dataset cache")
         parser.add_argument("--model_checkpoint", type=str,
-                            default="gpt2",
+                            default="distilgpt2",
                             help="Path, url or short name of the model")
-        parser.add_argument("--num_candidates", type=int, default=2,
+        parser.add_argument("--num_candidates", type=int, default=4,
                             help="Number of candidates for training")
         parser.add_argument("--max_history", type=int, default=2,
                             help="Number of previous exchanges to keep in "
@@ -224,11 +224,11 @@ class ConditionalLM(LightningModule):
                             help="Batch size")
         parser.add_argument("--lr", type=float, default=6.25e-5,
                             help="Learning rate")
-        parser.add_argument("--lm_coef", type=float, default=1.0,
+        parser.add_argument("--lm_coef", type=float, default=2.0,
                             help="LM loss coefficient")
         parser.add_argument("--mc_coef", type=float, default=1.0,
                             help="Multiple-choice loss coefficient")
-        parser.add_argument("--personality_permutations", type=int, default=1,
+        parser.add_argument("--personality_permutations", type=int, default=2,
                             help="Number of permutations of personality "
                                  "sentences")
 
