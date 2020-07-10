@@ -305,7 +305,7 @@ def build_input_from_segments(
         token_type_ids.extend([type] * len(seq))
     sequence.extend(next_user_utterance)
     token_type_ids.extend([user] * len(next_user_utterance))
-    num_prompt = len(sequence)
+    num_prompt = len(sequence) + 1
     sequence.extend(reply)
     token_type_ids.extend([system] * len(reply))
     sequence.append(eos)
