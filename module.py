@@ -110,7 +110,7 @@ class ConditionalLM(LightningModule):
         avg_loss = torch.stack([x['val_loss'] for x in outputs]).mean()
         avg_lm_loss = torch.stack([x['val_lm_loss'] for x in outputs]).mean()
         avg_mc_loss = torch.stack([x['val_mc_loss'] for x in outputs]).mean()
-        val_acc = float(sum([x['n_correct_pred'] for x in outputs])) / \
+        val_acc = torch.stack([x['n_correct_pred'] for x in outputs]).sum() / \
                   sum(x['n_pred'] for x in outputs)
         avg_bleu = torch.Tensor([x['bleu'] for x in outputs]).mean()
         tensorboard_logs = {
