@@ -1,3 +1,4 @@
 torch
 pytorch-lightning==0.8.4
 transformers==3.0.2
+wandb==0.9.3

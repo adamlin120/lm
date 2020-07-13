@@ -2,6 +2,7 @@ import logging
 from argparse import ArgumentParser, Namespace
 
 from pytorch_lightning import Trainer, seed_everything
+from pytorch_lightning import loggers
 
 from module import ConditionalLM
 
@@ -9,7 +10,9 @@ logging.basicConfig(level=logging.INFO)
 
 
 def main(args: Namespace):
-    trainer = Trainer.from_argparse_args(args)
+    tb_logger = loggers.TensorBoardLogger()
+    wandb_logger = loggers.WandbLogger()
+    trainer = Trainer.from_argparse_args(args, logger=[tb_logger, wandb_logger])
     model = ConditionalLM(args)
     trainer.fit(model)
 
