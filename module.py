@@ -14,6 +14,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from transformers import AdamW, OpenAIGPTDoubleHeadsModel, OpenAIGPTTokenizer, \
     GPT2DoubleHeadsModel, GPT2Tokenizer
 from tqdm.auto import tqdm
+from torchtext.data.metrics import bleu_score
 
 
 IGNORE_INDEX = -100
@@ -81,12 +82,28 @@ class ConditionalLM(LightningModule):
         loss = lm_loss * self.hparams.lm_coef + mc_loss * self.hparams.mc_coef
         mc_preds = mc_logits.argmax(-1)
         n_correct_pred = torch.sum(mc_preds == mc_labels)
+
+        active_lm_mask = labels[:, -1, ...] != IGNORE_INDEX
+        masked_lm_logits = [lm_logit[mask]
+                            for mask, lm_logit in zip(active_lm_mask,
+                                                      lm_logits[:, -1, ...])]
+        masked_lm_labels = [lm_label[mask]
+                            for mask, lm_label in zip(active_lm_mask,
+                                                      labels[:, -1, ...])]
+        masked_lm_preds = [l.argmax(-1) for l in masked_lm_logits]
+        lm_pred_texts = [self.tokenizer.decode(pred, True).split()
+                         for pred in masked_lm_preds]
+        lm_label_texts = [[self.tokenizer.decode(label, True).split()]
+                          for label in masked_lm_labels]
+        bleu = bleu_score(lm_pred_texts, lm_label_texts)
+
         return {
             'val_loss': loss,
             'val_lm_loss': lm_loss,
             'val_mc_loss': mc_loss,
             "n_correct_pred": n_correct_pred,
-            "n_pred": len(mc_preds)
+            "n_pred": len(mc_preds),
+            'bleu': bleu,
         }
 
     def validation_epoch_end(self, outputs):
@@ -95,12 +112,14 @@ class ConditionalLM(LightningModule):
         avg_mc_loss = torch.stack([x['val_mc_loss'] for x in outputs]).mean()
         val_acc = float(sum([x['n_correct_pred'] for x in outputs])) / \
                   sum(x['n_pred'] for x in outputs)
+        avg_bleu = torch.Tensor([x['bleu'] for x in outputs]).mean()
         tensorboard_logs = {
             'val_loss': avg_loss,
             'val_ppl': avg_loss.exp(),
             'val_lm_loss': avg_lm_loss,
             'val_mc_loss': avg_mc_loss,
-            'val_acc': val_acc
+            'val_acc': val_acc,
+            'val_bleu': avg_bleu,
         }
         return {'val_loss': avg_loss, 'log': tensorboard_logs}
 
