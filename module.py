@@ -71,14 +71,13 @@ class ConditionalLM(LightningModule):
 
     def validation_step(self, batch, batch_idx):
         input_ids, mc_token_ids, labels, mc_labels, token_type_ids = batch
-        lm_logits, mc_logits, *_ = self.model(input_ids=input_ids,
-                                              token_type_ids=token_type_ids,
-                                              mc_token_ids=mc_token_ids)
-        lm_logits_flat_shifted = \
-            lm_logits[..., :-1, :].contiguous().view(-1, lm_logits.size(-1))
-        labels_flat_shifted = labels[..., 1:].contiguous().view(-1)
-        lm_loss = self.criterion(lm_logits_flat_shifted, labels_flat_shifted)
-        mc_loss = self.criterion(mc_logits, mc_labels)
+        lm_loss, mc_loss, lm_logits, mc_logits, *_ = \
+            self.model(input_ids=input_ids,
+                       token_type_ids=token_type_ids,
+                       mc_token_ids=mc_token_ids,
+                       labels=labels,
+                       mc_labels=mc_labels
+                       )
         loss = lm_loss * self.hparams.lm_coef + mc_loss * self.hparams.mc_coef
         mc_preds = mc_logits.argmax(-1)
         n_correct_pred = torch.sum(mc_preds == mc_labels)
