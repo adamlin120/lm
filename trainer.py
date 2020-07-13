@@ -10,8 +10,8 @@ logging.basicConfig(level=logging.INFO)
 
 
 def main(args: Namespace):
-    tb_logger = loggers.TensorBoardLogger()
-    wandb_logger = loggers.WandbLogger()
+    tb_logger = loggers.TensorBoardLogger('logs/')
+    wandb_logger = loggers.WandbLogger('logs/')
     trainer = Trainer.from_argparse_args(args, logger=[tb_logger, wandb_logger])
     model = ConditionalLM(args)
     trainer.fit(model)
