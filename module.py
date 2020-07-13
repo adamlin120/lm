@@ -95,7 +95,7 @@ class ConditionalLM(LightningModule):
                          for pred in masked_lm_preds]
         lm_label_texts = [[self.tokenizer.decode(label, True).split()]
                           for label in masked_lm_labels]
-        bleu = bleu_score(lm_pred_texts, lm_label_texts)
+        bleu = torch.FloatTensor(bleu_score(lm_pred_texts, lm_label_texts))
 
         return {
             'val_loss': loss,
@@ -112,7 +112,7 @@ class ConditionalLM(LightningModule):
         avg_mc_loss = torch.stack([x['val_mc_loss'] for x in outputs]).mean()
         val_acc = torch.stack([x['n_correct_pred'] for x in outputs]).sum() / \
                   sum(x['n_pred'] for x in outputs)
-        avg_bleu = torch.Tensor([x['bleu'] for x in outputs]).mean().type_as(val_acc, device=self.device)
+        avg_bleu = torch.stack([x['bleu'] for x in outputs]).mean()
         tensorboard_logs = {
             'val_loss': avg_loss,
             'val_ppl': avg_loss.exp(),
