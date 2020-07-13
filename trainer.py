@@ -15,7 +15,7 @@ def main(args: Namespace):
                                        project="controllable-response"
                                        )
     checkpoint_callback = ModelCheckpoint(
-        filepath='my/path/{epoch}-{val_loss:.4f}-{val_bleu:.2f}',
+        filepath='ckpts/{epoch}-{val_loss:.4f}-{val_bleu:.2f}',
         save_last=True,
         save_top_k=2,
         verbose=True,
