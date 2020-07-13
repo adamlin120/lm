@@ -95,7 +95,8 @@ class ConditionalLM(LightningModule):
                          for pred in masked_lm_preds]
         lm_label_texts = [[self.tokenizer.decode(label, True).split()]
                           for label in masked_lm_labels]
-        bleu = torch.FloatTensor(bleu_score(lm_pred_texts, lm_label_texts))
+        bleu = torch.tensor([bleu_score(lm_pred_texts, lm_label_texts)],
+                            device=self.device)
 
         return {
             'val_loss': loss,
