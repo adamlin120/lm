@@ -239,7 +239,7 @@ class ConditionalLM(LightningModule):
 
         parser.add_argument("--dataset_path", type=str,
                             default="data/multiwoz2.1.processed.json",
-                            help="Path of the dataset.)
+                            help="Path of the dataset.")
         parser.add_argument("--model_checkpoint", type=str,
                             default="distilgpt2",
                             help="Path, url or short name of the model")
