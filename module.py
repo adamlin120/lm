@@ -239,17 +239,10 @@ class ConditionalLM(LightningModule):
 
         parser.add_argument("--dataset_path", type=str,
                             default="data/multiwoz2.1.processed.json",
-                            help="Path or url of the dataset. If empty "
-                                 "download "
-                                 "from S3.")
-        parser.add_argument("--dataset_cache", type=str,
-                            default='./dataset_cache',
-                            help="Path or url of the dataset cache")
+                            help="Path of the dataset.)
         parser.add_argument("--model_checkpoint", type=str,
                             default="distilgpt2",
                             help="Path, url or short name of the model")
-        parser.add_argument("--num_candidates", type=int, default=4,
-                            help="Number of candidates for training")
         parser.add_argument("--max_history", type=int, default=2,
                             help="Number of previous exchanges to keep in "
                                  "history")
@@ -261,9 +254,6 @@ class ConditionalLM(LightningModule):
                             help="LM loss coefficient")
         parser.add_argument("--mc_coef", type=float, default=1.0,
                             help="Multiple-choice loss coefficient")
-        parser.add_argument("--personality_permutations", type=int, default=2,
-                            help="Number of permutations of personality "
-                                 "sentences")
 
         parser.add_argument('--num_workers', type=int, default=4,
                             help='Number of workers in data loader')
