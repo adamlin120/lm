@@ -1,8 +1,8 @@
 import logging
 from argparse import ArgumentParser, Namespace
 
-from pytorch_lightning import Trainer, seed_everything
-from pytorch_lightning import loggers
+from pytorch_lightning import Trainer, seed_everything, loggers
+from pytorch_lightning.callbacks import ModelCheckpoint
 
 from module import ConditionalLM
 
@@ -14,7 +14,18 @@ def main(args: Namespace):
     wandb_logger = loggers.WandbLogger(save_dir='logs/',
                                        project="controllable-response"
                                        )
-    trainer = Trainer.from_argparse_args(args, logger=[tb_logger, wandb_logger])
+    checkpoint_callback = ModelCheckpoint(
+        filepath='my/path/{epoch}-{val_loss:.4f}-{val_bleu:.2f}',
+        save_last=True,
+        save_top_k=2,
+        verbose=True,
+        monitor='val_loss',
+        mode='min',
+    )
+    trainer = Trainer.from_argparse_args(args,
+                                         logger=[tb_logger, wandb_logger],
+                                         checkpoint_callback=checkpoint_callback
+                                         )
     model = ConditionalLM(args)
     trainer.fit(model)
 
