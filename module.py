@@ -160,7 +160,7 @@ class ConditionalLM(LightningModule):
                         random_utterance = _sample_random_response()
                         for labels, candidate in zip(
                                 [False, True],
-                                [random_utterance, next_user_utterance]):
+                                [random_utterance, response]):
                             instance = build_input_from_segments(
                                 history, next_user_utterance, candidate,
                                 labels, self.tokenizer)
