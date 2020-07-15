@@ -249,7 +249,12 @@ class ConditionalLM(LightningModule):
                         continue
                     history = dialog[
                               i - (2 * self.hparams.max_history + 1):i]
-                    next_user_utterance = dialog[i + 1]
+                    if i + 1 >= len(dialog):
+                        # SGD dataset have even number of turns
+                        # i.e. the last speaker in dialog may not be user
+                        continue
+                    else:
+                        next_user_utterance = dialog[i + 1]
                     random_utterance = _sample_random_response()
                     for labels, candidate in zip(
                             [False, True],

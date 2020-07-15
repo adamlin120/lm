@@ -40,8 +40,7 @@ def main(delex: bool = False):
         }
         for split, dataset in datasets.items()
     }
-    output_debug_path.write_text(json.dumps(debug_dataset,
-                                                           indent=2))
+    output_debug_path.write_text(json.dumps(debug_dataset, indent=2))
 
 
 def delexicalize(utterance: str, frames: List[Dict]) -> str:
