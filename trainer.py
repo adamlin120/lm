@@ -1,4 +1,5 @@
 import logging
+import os
 from argparse import ArgumentParser, Namespace
 
 from pytorch_lightning import Trainer, seed_everything, loggers
@@ -14,8 +15,10 @@ def main(args: Namespace):
     wandb_logger = loggers.WandbLogger(save_dir='logs/',
                                        project="controllable-response"
                                        )
+    assert wandb_logger.experiment.id
     checkpoint_callback = ModelCheckpoint(
-        filepath='ckpts/{epoch}-{val_loss:.4f}-{val_bleu:.2f}',
+        filepath=os.path.join('ckpts', wandb_logger.experiment.id,
+                              '{epoch}-{val_loss:.4f}-{val_bleu:.4f}'),
         save_last=True,
         save_top_k=2,
         verbose=True,
@@ -28,6 +31,7 @@ def main(args: Namespace):
                                          )
     model = ConditionalLM(args)
     trainer.fit(model)
+    trainer.test()
 
 
 def parse_args():

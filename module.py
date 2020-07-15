@@ -33,6 +33,9 @@ PADDED_INPUTS = ["input_ids", "labels", "token_type_ids"]
 
 
 class ConditionalLM(LightningModule):
+
+    _SPLITS = ['train', 'valid', 'test']
+
     def __init__(self,
                  hparams: Namespace,
                  ):
@@ -124,99 +127,165 @@ class ConditionalLM(LightningModule):
         }
         return {'val_loss': avg_loss, 'log': tensorboard_logs}
 
+    def test_step(self, batch, batch_idx):
+        input_ids, mc_token_ids, labels, mc_labels, token_type_ids = batch
+        for i, ids in enumerate(input_ids):
+            ids = ids[-1]
+            for it, j in enumerate(ids):
+                if j == self.tokenizer.convert_tokens_to_ids(SYSTEM):
+                    last_sys = it
+                if j == self.tokenizer.convert_tokens_to_ids(USER):
+                    last_user = it
+            ids = ids[:last_sys+1]
+            type_ids = token_type_ids[i, -1, ...][:last_sys+1]
+            output = self.model.generate(
+                ids.unsqueeze(0),
+                token_type_ids=type_ids,
+                pad_token_id=self.tokenizer.convert_tokens_to_ids(SYSTEM),
+                eos_token_id=self.tokenizer.convert_tokens_to_ids(EOS),
+                max_length=250,
+                do_sample=True,
+                top_p=0.95,
+                top_k=60,
+            )
+            print(self.tokenizer.decode(ids))
+            print(self.tokenizer.decode(output[0]))
+            import ipdb
+            ids = torch.cat([ids[:last_user], ids[last_sys:]])
+            type_ids = torch.cat([type_ids[:last_user], type_ids[last_sys:]])
+            output = self.model.generate(
+                ids.unsqueeze(0),
+                token_type_ids=type_ids,
+                pad_token_id=self.tokenizer.convert_tokens_to_ids(SYSTEM),
+                eos_token_id=self.tokenizer.convert_tokens_to_ids(EOS),
+                max_length=250,
+                do_sample=True,
+                top_p=0.95,
+                top_k=60,
+            )
+            print(self.tokenizer.decode(ids))
+            print(self.tokenizer.decode(output[0]))
+            ipdb.set_trace()
+        lm_loss, mc_loss, lm_logits, mc_logits, *_ = \
+            self.model(input_ids=input_ids,
+                       token_type_ids=token_type_ids,
+                       mc_token_ids=mc_token_ids,
+                       labels=labels,
+                       mc_labels=mc_labels
+                       )
+        loss = lm_loss * self.hparams.lm_coef + mc_loss * self.hparams.mc_coef
+        mc_preds = mc_logits.argmax(-1)
+        n_correct_pred = torch.sum(mc_preds == mc_labels)
+
+        active_lm_mask = labels[:, -1, ...] != IGNORE_INDEX
+        masked_lm_logits = [lm_logit[mask]
+                            for mask, lm_logit in zip(active_lm_mask,
+                                                      lm_logits[:, -1, ...])]
+        masked_lm_labels = [lm_label[mask]
+                            for mask, lm_label in zip(active_lm_mask,
+                                                      labels[:, -1, ...])]
+        masked_lm_preds = [l.argmax(-1) for l in masked_lm_logits]
+        lm_pred_texts = [self.tokenizer.decode(pred, True).split()
+                         for pred in masked_lm_preds]
+        lm_label_texts = [[self.tokenizer.decode(label, True).split()]
+                          for label in masked_lm_labels]
+        bleu = torch.tensor([bleu_score(lm_pred_texts, lm_label_texts)],
+                            device=self.device)
+
+        return {
+            'val_loss': loss,
+            'val_lm_loss': lm_loss,
+            'val_mc_loss': mc_loss,
+            "n_correct_pred": n_correct_pred,
+            "n_pred": len(mc_preds),
+            'bleu': bleu,
+        }
+
+    def test_epoch_end(self, *args, **kwargs):
+        outputs = self.validation_epoch_end(*args, **kwargs)
+        outputs['test_loss'] = outputs.pop('val_loss')
+        outputs['log'] = {k.replace('val', 'test'): v
+                          for k, v in outputs['log'].items()}
+        return outputs
+
     def configure_optimizers(self):
         optimizer = AdamW(self.model.parameters(), lr=self.hparams.lr,
                           correct_bias=True)
         return optimizer
 
-    def prepare_data(self):
-        train_tensor_dataset_cache_path = Path(
-            f'tensor_dataset_cache_train_{self.hparams.model_checkpoint}_'
+    def prepare_split_data(self, split: str):
+        assert split in {'train', 'valid', 'test'}
+        tensor_dataset_cache_path = Path(
+            f'tensor_dataset_cache_{split}_{self.hparams.model_checkpoint}_'
             f'{self.hparams.dataset_path}.pt'.replace('/', '_SLASH_'))
-        valid_tensor_dataset_cache_path = Path(
-            f'tensor_dataset_cache_valid_{self.hparams.model_checkpoint}_'
-            f'{self.hparams.dataset_path}.pt'.replace('/', '_SLASH_'))
-        if train_tensor_dataset_cache_path.exists() and \
-                valid_tensor_dataset_cache_path.exists():
+        if tensor_dataset_cache_path.exists():
             logging.info(f"Train tensor dataset loaded from"
-                         f"{train_tensor_dataset_cache_path}")
-            logging.info(f"Valid tensor dataset loaded from"
-                         f"{valid_tensor_dataset_cache_path}")
-            self.train_dataset = \
-                torch.load(train_tensor_dataset_cache_path.open('rb'))
-            self.valid_dataset = \
-                torch.load(valid_tensor_dataset_cache_path.open('rb'))
+                         f"{tensor_dataset_cache_path}")
+            setattr(self, f'{split}_dataset',
+                    torch.load(tensor_dataset_cache_path.open('rb')))
         else:
-            datasets = json.loads(
-                Path(self.hparams.dataset_path).read_text())
+            dataset = json.loads(
+                Path(self.hparams.dataset_path).read_text())[split]
 
             logging.info("Build inputs and labels")
-            processed_datasets = {
-                'train': defaultdict(list),
-                'valid': defaultdict(list),
-            }
+            processed_dataset = defaultdict(list)
             num_candidates = 2
-            for dataset_name, dataset in datasets.items():
-                for dial_idx, dialog in tqdm(dataset.items(),
-                                             desc=dataset_name):
-                    def _sample_random_response():
-                        _first = True
-                        while _first or \
-                                random_dial_idx == dial_idx or \
-                                len(random_dial) < 2:
-                            random_dial_idx = choice(list(dataset.keys()))
-                            random_dial = dataset[random_dial_idx]
-                            _first = False
-                        random_turn_idx = randrange(0, len(random_dial) // 2)
-                        return random_dial[random_turn_idx * 2 + 1]
+            for dial_idx, dialog in tqdm(dataset.items(),
+                                         desc=split):
+                def _sample_random_response():
+                    _first = True
+                    while _first or \
+                            random_dial_idx == dial_idx or \
+                            len(random_dial) < 2:
+                        random_dial_idx = choice(list(dataset.keys()))
+                        random_dial = dataset[random_dial_idx]
+                        _first = False
+                    random_turn_idx = randrange(0, len(random_dial) // 2)
+                    return random_dial[random_turn_idx * 2 + 1]
 
-                    for i, response in enumerate(dialog):
-                        if i % 2 == 0:
-                            # skip user turn
-                            continue
-                        history = dialog[i-(2 * self.hparams.max_history + 1):i]
-                        next_user_utterance = dialog[i+1]
-                        random_utterance = _sample_random_response()
-                        for labels, candidate in zip(
-                                [False, True],
-                                [random_utterance, response]):
-                            instance = build_input_from_segments(
-                                history, next_user_utterance, candidate,
-                                labels, self.tokenizer)
-                            for input_name, input_array in instance.items():
-                                processed_datasets[dataset_name][input_name].append(input_array)
-                        processed_datasets[dataset_name]["mc_labels"].append(
-                            num_candidates - 1)
-                        processed_datasets[dataset_name]["n_candidates"] = \
-                            num_candidates
+                for i, response in enumerate(dialog):
+                    if i % 2 == 0:
+                        # skip user turn
+                        continue
+                    history = dialog[
+                              i - (2 * self.hparams.max_history + 1):i]
+                    next_user_utterance = dialog[i + 1]
+                    random_utterance = _sample_random_response()
+                    for labels, candidate in zip(
+                            [False, True],
+                            [random_utterance, response]):
+                        instance = build_input_from_segments(
+                            history, next_user_utterance, candidate,
+                            labels, self.tokenizer)
+                        for input_name, input_array in instance.items():
+                            processed_dataset[input_name].append(input_array)
+                    processed_dataset["mc_labels"].append(num_candidates - 1)
+                    processed_dataset["n_candidates"] = num_candidates
 
             logging.info("Pad inputs and convert to Tensor")
-            tensor_datasets = {"train": [], "valid": []}
-            for dataset_name, dataset in processed_datasets.items():
-                dataset = pad_dataset(
-                    dataset, self.tokenizer.convert_tokens_to_ids(PAD))
-                for input_name in MODEL_INPUTS:
-                    tensor = torch.tensor(dataset[input_name])
-                    if input_name != "mc_labels":
-                        tensor = tensor.view((-1, processed_datasets[dataset_name][
-                            "n_candidates"]) + tensor.shape[1:])
-                    tensor_datasets[dataset_name].append(tensor)
+            tensor_dataset = []
+            processed_dataset = pad_dataset(
+                processed_dataset, self.tokenizer.convert_tokens_to_ids(PAD))
+            for input_name in MODEL_INPUTS:
+                tensor = torch.tensor(processed_dataset[input_name])
+                if input_name != "mc_labels":
+                    tensor = tensor.view(
+                        (-1, processed_dataset["n_candidates"]) +
+                        tensor.shape[1:])
+                tensor_dataset.append(tensor)
 
-            self.train_dataset = TensorDataset(*tensor_datasets["train"])
-            self.valid_dataset = TensorDataset(*tensor_datasets["valid"])
+            setattr(self, f'{split}_dataset', TensorDataset(*tensor_dataset))
 
-            torch.save(self.train_dataset, str(train_tensor_dataset_cache_path))
-            torch.save(self.valid_dataset, str(valid_tensor_dataset_cache_path))
-            logging.info(f"Train tensor dataset saved to "
-                         f"{train_tensor_dataset_cache_path}")
-            logging.info(f"Valid tensor dataset saved to "
-                         f"{valid_tensor_dataset_cache_path}")
+            torch.save(getattr(self, f'{split}_dataset'),
+                       str(tensor_dataset_cache_path))
+            logging.info(f"{split.capitalize()} tensor dataset saved to "
+                         f"{tensor_dataset_cache_path}")
+        logging.info(f"{split} dataset (Batch, Candidates, Seq length): "
+                     f"{getattr(self, f'{split}_dataset').tensors[0].shape}")
 
-    def setup(self, stage):
-        logging.info(f"Train dataset (Batch, Candidates, Seq length): "
-                     f"{self.train_dataset.tensors[0].shape}")
-        logging.info(f"Valid dataset (Batch, Candidates, Seq length): "
-                     f"{self.valid_dataset.tensors[0].shape}")
+    def prepare_data(self):
+        for split in self._SPLITS:
+            self.prepare_split_data(split)
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset,
@@ -228,6 +297,13 @@ class ConditionalLM(LightningModule):
 
     def val_dataloader(self):
         return DataLoader(self.valid_dataset,
+                          batch_size=self.hparams.batch_size,
+                          num_workers=self.hparams.num_workers,
+                          pin_memory=True
+                          )
+
+    def test_dataloader(self):
+        return DataLoader(self.test_dataset,
                           batch_size=self.hparams.batch_size,
                           num_workers=self.hparams.num_workers,
                           pin_memory=True

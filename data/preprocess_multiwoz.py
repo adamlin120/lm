@@ -9,7 +9,8 @@ def main():
     dir = Path('./multiwoz2.1/')
     paths = {
         'train': dir / 'nadst_train_dials.json',
-        'valid': dir / 'nadst_dev_dials.json'
+        'valid': dir / 'nadst_dev_dials.json',
+        'test': dir / 'nadst_test_dials.json',
     }
     for split, path in paths.items():
         for dial in json.loads(path.read_text()):
