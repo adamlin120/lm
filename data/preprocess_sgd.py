@@ -1,15 +1,13 @@
 import json
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import List
 from itertools import cycle
-from argparse import ArgumentParser
 
 
-def main(delex: bool = False):
+def main():
     dir = Path('./dstc8-schema-guided-dialogue/')
-    output_path = Path(f"sgd.processed{'.delex' if delex else ''}.json")
-    output_debug_path = Path(
-        f"sgd.processed{'.delex' if delex else ''}.debug.json")
+    output_path = Path(f"sgd.processed.json")
+    output_debug_path = Path(f"sgd.processed.debug.json")
 
     split_dirs = {
         'train': dir / 'train',
@@ -26,8 +24,6 @@ def main(delex: bool = False):
                                          dial['turns']):
                     assert speaker == turn['speaker']
                     utterance = turn['utterance']
-                    if delex:
-                        utterance = delexicalize(utterance, turn['frames'])
                     turns.append(utterance)
                 datasets[split][dial_idx] = turns
     assert all(split in datasets for split in split_dirs.keys())
@@ -43,27 +39,5 @@ def main(delex: bool = False):
     output_debug_path.write_text(json.dumps(debug_dataset, indent=2))
 
 
-def delexicalize(utterance: str, frames: List[Dict]) -> str:
-    mentions: List[Tuple[str, str]] = []
-    for frame in frames:
-        slots = frame.get('slots', [])
-        for slot in slots:
-            start = slot['start']
-            end = slot['exclusive_end']
-            slot_name = slot['slot']
-            slot_value = utterance[start:end]
-            mentions.append((slot_name, slot_value))
-
-    for name, value in mentions:
-        utterance = utterance.replace(value, name)
-        # TODO:
-        assert value not in utterance and name in utterance, \
-            f"Utterance: {utterance}\nValue: {slot_value}\nName: {name}"
-    return utterance
-
-
 if __name__ == '__main__':
-    parser = ArgumentParser()
-    parser.add_argument('--delex', action='store_true')
-    args = parser.parse_args()
-    main(args.delex)
+    main()
