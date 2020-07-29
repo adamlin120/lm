@@ -13,9 +13,7 @@ Using `persona-chat` as an example.
 Other datasets can be run mostly the same way.
 
 ```bash
-cd data/persona-chat
-bash download_data.bash
-cd ../
+bash download_personachat.sh
 python preprocess_persona-chat.py
 ```
 
