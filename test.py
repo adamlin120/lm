@@ -1,6 +1,9 @@
 import logging
 from argparse import ArgumentParser, Namespace
+from pathlib import Path
 
+import torch
+from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer
 
 from module import ConditionalLM
@@ -13,26 +16,26 @@ def main(args: Namespace):
         checkpoint_path=args.checkpoint_path,
         hparams_file=args.hparams_file,
     )
-    if args.interactive:
-        prompt = input("Input: ")
-        while prompt.strip():
-            print(model.interactive(prompt))
-    else:
-        trainer = Trainer.from_argparse_args(args)
-        trainer.test(model)
+    trainer = Trainer.from_argparse_args(args)
+    dataset = torch.load(args.tensor_dataset_cache.open('rb'))
+    test_dataloaders = DataLoader(
+        dataset,
+        batch_size=model.hparams.batch_size,
+        num_workers=model.hparams.num_workers,
+        pin_memory=True
+    )
+    trainer.test(model, test_dataloaders)
 
 
-def parse_args():
+def parse_args() -> Namespace:
     parser = ArgumentParser(add_help=False)
     parser.add_argument('checkpoint_path')
     parser.add_argument('hparams_file')
-    parser.add_argument('--interactive', action='store_true')
+    parser.add_argument('--tensor_dataset_cache', type=Path)
     parser = ConditionalLM.add_model_specific_args(parser)
     parser = Trainer.add_argparse_args(parser)
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 if __name__ == '__main__':
-    args = parse_args()
-    main(args)
+    main(parse_args())

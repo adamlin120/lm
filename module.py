@@ -127,86 +127,16 @@ class ConditionalLM(LightningModule):
         }
         return {'val_loss': avg_loss, 'log': tensorboard_logs}
 
-    def test_step(self, batch, batch_idx):
-        input_ids, mc_token_ids, labels, mc_labels, token_type_ids = batch
-        for i, ids in enumerate(input_ids):
-            ids = ids[-1]
-            for it, j in enumerate(ids):
-                if j == self.tokenizer.convert_tokens_to_ids(SYSTEM):
-                    last_sys = it
-                if j == self.tokenizer.convert_tokens_to_ids(USER):
-                    last_user = it
-            ids = ids[:last_sys+1]
-            type_ids = token_type_ids[i, -1, ...][:last_sys+1]
-            output = self.model.generate(
-                ids.unsqueeze(0),
-                token_type_ids=type_ids,
-                pad_token_id=self.tokenizer.convert_tokens_to_ids(SYSTEM),
-                eos_token_id=self.tokenizer.convert_tokens_to_ids(EOS),
-                max_length=250,
-                do_sample=True,
-                top_p=0.95,
-                top_k=60,
-            )
-            print(self.tokenizer.decode(ids))
-            print(self.tokenizer.decode(output[0]))
-            import ipdb
-            ids = torch.cat([ids[:last_user], ids[last_sys:]])
-            type_ids = torch.cat([type_ids[:last_user], type_ids[last_sys:]])
-            output = self.model.generate(
-                ids.unsqueeze(0),
-                token_type_ids=type_ids,
-                pad_token_id=self.tokenizer.convert_tokens_to_ids(SYSTEM),
-                eos_token_id=self.tokenizer.convert_tokens_to_ids(EOS),
-                max_length=250,
-                do_sample=True,
-                top_p=0.95,
-                top_k=60,
-            )
-            print(self.tokenizer.decode(ids))
-            print(self.tokenizer.decode(output[0]))
-            ipdb.set_trace()
-        lm_loss, mc_loss, lm_logits, mc_logits, *_ = \
-            self.model(input_ids=input_ids,
-                       token_type_ids=token_type_ids,
-                       mc_token_ids=mc_token_ids,
-                       labels=labels,
-                       mc_labels=mc_labels
-                       )
-        loss = lm_loss * self.hparams.lm_coef + mc_loss * self.hparams.mc_coef
-        mc_preds = mc_logits.argmax(-1)
-        n_correct_pred = torch.sum(mc_preds == mc_labels)
-
-        active_lm_mask = labels[:, -1, ...] != IGNORE_INDEX
-        masked_lm_logits = [lm_logit[mask]
-                            for mask, lm_logit in zip(active_lm_mask,
-                                                      lm_logits[:, -1, ...])]
-        masked_lm_labels = [lm_label[mask]
-                            for mask, lm_label in zip(active_lm_mask,
-                                                      labels[:, -1, ...])]
-        masked_lm_preds = [l.argmax(-1) for l in masked_lm_logits]
-        lm_pred_texts = [self.tokenizer.decode(pred, True).split()
-                         for pred in masked_lm_preds]
-        lm_label_texts = [[self.tokenizer.decode(label, True).split()]
-                          for label in masked_lm_labels]
-        bleu = torch.tensor([bleu_score(lm_pred_texts, lm_label_texts)],
-                            device=self.device)
-
-        return {
-            'val_loss': loss,
-            'val_lm_loss': lm_loss,
-            'val_mc_loss': mc_loss,
-            "n_correct_pred": n_correct_pred,
-            "n_pred": len(mc_preds),
-            'bleu': bleu,
-        }
+    def test_step(self, *args, **kwargs):
+        return self.validation_step(*args, **kwargs)
 
     def test_epoch_end(self, *args, **kwargs):
-        outputs = self.validation_epoch_end(*args, **kwargs)
-        outputs['test_loss'] = outputs.pop('val_loss')
-        outputs['log'] = {k.replace('val', 'test'): v
-                          for k, v in outputs['log'].items()}
-        return outputs
+        output = self.validation_epoch_end(*args, **kwargs)
+        output = {k.replace('val', 'test'): v
+                  for k, v in output.items()}
+        output['log'] = {k.replace('val', 'test'): v
+                         for k, v in output['log'].items()}
+        return output
 
     def configure_optimizers(self):
         optimizer = AdamW(self.model.parameters(), lr=self.hparams.lr,
@@ -219,7 +149,7 @@ class ConditionalLM(LightningModule):
             f'tensor_dataset_cache_{split}_{self.hparams.model_checkpoint}_'
             f'{self.hparams.dataset_path}.pt'.replace('/', '_SLASH_'))
         if tensor_dataset_cache_path.exists():
-            logging.info(f"Train tensor dataset loaded from"
+            logging.info(f"{split} tensor dataset loaded from"
                          f"{tensor_dataset_cache_path}")
             setattr(self, f'{split}_dataset',
                     torch.load(tensor_dataset_cache_path.open('rb')))
