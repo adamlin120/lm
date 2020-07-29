@@ -1,32 +1,28 @@
 import json
 from pathlib import Path
-from typing import List
-from itertools import cycle
+
+
+DIAL_START = "[STARTCONVERSATION]"
 
 
 def main():
-    dir = Path('./dstc8-schema-guided-dialogue/')
-    output_path = Path(f"sgd.processed.json")
-    output_debug_path = Path(f"sgd.processed.debug.json")
+    path = Path('./sgd/delex/')
+    output_path = Path(f"sgd.processed.delex.json")
+    output_debug_path = Path(f"sgd.processed.delex.debug.json")
 
-    split_dirs = {
-        'train': dir / 'train',
-        'valid': dir / 'dev',
-        'test': dir / 'test',
+    split_files = {
+        'train': path / 'train.txt',
+        'valid': path / 'dev.txt',
+        'test': path / 'test.txt',
     }
-    datasets = {k: {} for k in split_dirs.keys()}
-    for split, dir in split_dirs.items():
-        for path in dir.glob('dialogues_*.json'):
-            for dial in json.loads(path.read_text()):
-                dial_idx = dial['dialogue_id']
-                turns: List[str] = []
-                for speaker, turn in zip(cycle(('USER', 'SYSTEM')),
-                                         dial['turns']):
-                    assert speaker == turn['speaker']
-                    utterance = turn['utterance']
-                    turns.append(utterance)
-                datasets[split][dial_idx] = turns
-    assert all(split in datasets for split in split_dirs.keys())
+    datasets = {
+        split: {i: dial.strip().splitlines()
+                for i, dial in enumerate(path.read_text().split(DIAL_START))
+                if dial.strip()
+                }
+        for split, path in split_files.items()
+    }
+    assert all(split in datasets for split in split_files.keys())
     output_path.write_text(json.dumps(datasets, indent=2))
 
     debug_dataset = {
