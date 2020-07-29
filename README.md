@@ -42,3 +42,8 @@ The training script can be used in single GPU or multi GPU settings:
 python trainer.py -h  # To see options for training
 ```
 
+## Interactive Evaluation
+
+```bash
+python test.py <checkpoint_path> <hparams_file> --interactive
+```
