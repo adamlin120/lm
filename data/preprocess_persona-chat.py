@@ -3,6 +3,7 @@ from pathlib import Path
 
 
 SPLITS = ['train', 'valid', 'test']
+SILENCE = "__ SILENCE __"
 
 
 def main():
@@ -20,6 +21,8 @@ def main():
             dial_idx = f'{split}_{i}'
             turns = dial['utterances'][-1]['history']
             turns.append(dial['utterances'][-1]['candidates'][-1])
+            if any(turn == SILENCE for turn in turns):
+                continue
             datasets[split][dial_idx] = turns
     assert all(split in datasets for split in SPLITS)
     output_path.write_text(json.dumps(datasets, indent=2))
