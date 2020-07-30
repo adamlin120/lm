@@ -16,7 +16,8 @@ def main():
         path = dir / split / f'dialogues_{split}.txt'
         datasets[split.replace('validation', 'valid')] = \
             {
-                i: line.strip().split(SENT_DELIMITER)
+                i: list(filter(lambda x: x.strip(),
+                               line.strip().split(SENT_DELIMITER)))
                 for i, line in enumerate(path.read_text().splitlines())
             }
     assert all(split in datasets for split in SPLITS)
