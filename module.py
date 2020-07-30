@@ -10,7 +10,7 @@ from collections import defaultdict
 import torch
 import torch.nn as nn
 from pytorch_lightning import LightningModule
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset, ConcatDataset
 from transformers import AdamW, OpenAIGPTDoubleHeadsModel, OpenAIGPTTokenizer, \
     GPT2DoubleHeadsModel, GPT2Tokenizer
 from tqdm.auto import tqdm
@@ -30,6 +30,8 @@ ATTR_TO_SPECIAL_TOKEN = {'bos_token': BOS, 'eos_token': EOS,
 MODEL_INPUTS = ["input_ids", "mc_token_ids", "labels", "mc_labels",
                 "token_type_ids"]
 PADDED_INPUTS = ["input_ids", "labels", "token_type_ids"]
+
+TASK_ORIENTED_DATASETS = ['sgd', 'multiwoz']
 
 
 class ConditionalLM(LightningModule):
@@ -145,78 +147,92 @@ class ConditionalLM(LightningModule):
 
     def prepare_split_data(self, split: str):
         assert split in {'train', 'valid', 'test'}
-        tensor_dataset_cache_path = Path(
-            f'tensor_dataset_cache_{split}_{self.hparams.model_checkpoint}_'
-            f'{self.hparams.dataset_path}.pt'.replace('/', '_SLASH_'))
-        if tensor_dataset_cache_path.exists():
-            logging.info(f"{split} tensor dataset loaded from"
-                         f"{tensor_dataset_cache_path}")
-            setattr(self, f'{split}_dataset',
+        datasets = []
+        pad_id = self.tokenizer.convert_tokens_to_ids(PAD)
+        for dataset_path in self.hparams.dataset_paths:
+            tensor_dataset_cache_path = Path(
+                f'tensor_dataset_cache_{split}_'
+                f'{self.hparams.model_checkpoint}_'
+                f'{dataset_path}.pt'.replace('/', '_SLASH_'))
+            if tensor_dataset_cache_path.exists():
+                logging.info(f"{split} tensor dataset loaded from"
+                             f"{tensor_dataset_cache_path}")
+                datasets.append(
                     torch.load(tensor_dataset_cache_path.open('rb')))
-        else:
-            dataset = json.loads(
-                Path(self.hparams.dataset_path).read_text())[split]
+            else:
+                dataset = json.loads(
+                    Path(dataset_path).read_text())[split]
 
-            logging.info("Build inputs and labels")
-            processed_dataset = defaultdict(list)
-            num_candidates = 2
-            for dial_idx, dialog in tqdm(dataset.items(),
-                                         desc=split):
-                def _sample_random_response():
-                    _first = True
-                    while _first or \
-                            random_dial_idx == dial_idx or \
-                            len(random_dial) < 2:
-                        random_dial_idx = choice(list(dataset.keys()))
-                        random_dial = dataset[random_dial_idx]
-                        _first = False
-                    random_turn_idx = randrange(0, len(random_dial) // 2)
-                    return random_dial[random_turn_idx * 2 + 1]
+                is_task_oriented = any(name.lower() in dataset_path.lower()
+                                       for name in TASK_ORIENTED_DATASETS)
 
-                for i, response in enumerate(dialog):
-                    if i % 2 == 0:
-                        # skip user turn
-                        continue
-                    history = dialog[
-                              i - (2 * self.hparams.max_history + 1):i]
-                    if i + 1 >= len(dialog):
-                        # SGD dataset have even number of turns
-                        # i.e. the last speaker in dialog may not be user
-                        continue
-                    else:
-                        next_user_utterance = dialog[i + 1]
-                    random_utterance = _sample_random_response()
-                    for labels, candidate in zip(
-                            [False, True],
-                            [random_utterance, response]):
-                        instance = build_input_from_segments(
-                            history, next_user_utterance, candidate,
-                            labels, self.tokenizer)
-                        for input_name, input_array in instance.items():
-                            processed_dataset[input_name].append(input_array)
-                    processed_dataset["mc_labels"].append(num_candidates - 1)
-                    processed_dataset["n_candidates"] = num_candidates
+                logging.info("Build inputs and labels")
+                processed_dataset = defaultdict(list)
+                num_candidates = 2
+                for dial_idx, dialog in tqdm(dataset.items(),
+                                             desc=split):
+                    def _sample_random_response():
+                        _first = True
+                        while _first or \
+                                random_dial_idx == dial_idx or \
+                                len(random_dial) < 2:
+                            random_dial_idx = choice(list(dataset.keys()))
+                            random_dial = dataset[random_dial_idx]
+                            _first = False
+                        random_turn_idx = randrange(0, len(random_dial) // 2)
+                        return random_dial[random_turn_idx * 2 + 1]
 
-            logging.info("Pad inputs and convert to Tensor")
-            tensor_dataset = []
-            processed_dataset = pad_dataset(
-                processed_dataset, self.tokenizer.convert_tokens_to_ids(PAD))
-            for input_name in MODEL_INPUTS:
-                tensor = torch.tensor(processed_dataset[input_name])
-                if input_name != "mc_labels":
-                    tensor = tensor.view(
-                        (-1, processed_dataset["n_candidates"]) +
-                        tensor.shape[1:])
-                tensor_dataset.append(tensor)
+                    for i, response in enumerate(dialog):
+                        if i % 2 == 0:
+                            # skip user turn
+                            continue
+                        history = dialog[
+                                  i - (2 * self.hparams.max_history + 1):i]
+                        if is_task_oriented:
+                            if i + 1 >= len(dialog):
+                                # SGD dataset have even number of turns
+                                # i.e. the last speaker in dialog may not be user
+                                continue
+                            else:
+                                next_user_utterance = dialog[i + 1]
+                        else:
+                            next_user_utterance = ''
+                        random_utterance = _sample_random_response()
+                        for labels, candidate in zip(
+                                [False, True],
+                                [random_utterance, response]):
+                            instance = build_input_from_segments(
+                                history, next_user_utterance, candidate,
+                                labels, self.tokenizer)
+                            for input_name, input_array in instance.items():
+                                processed_dataset[input_name].append(input_array)
+                        processed_dataset["mc_labels"].append(num_candidates - 1)
+                        processed_dataset["n_candidates"] = num_candidates
 
-            setattr(self, f'{split}_dataset', TensorDataset(*tensor_dataset))
+                logging.info("Pad inputs and convert to Tensor")
+                tensor_dataset = []
+                processed_dataset = pad_dataset(
+                    processed_dataset, pad_id)
+                for input_name in MODEL_INPUTS:
+                    tensor = torch.tensor(processed_dataset[input_name])
+                    if input_name != "mc_labels":
+                        tensor = tensor.view(
+                            (-1, processed_dataset["n_candidates"]) +
+                            tensor.shape[1:])
+                    tensor_dataset.append(tensor)
 
-            torch.save(getattr(self, f'{split}_dataset'),
-                       str(tensor_dataset_cache_path))
-            logging.info(f"{split.capitalize()} tensor dataset saved to "
-                         f"{tensor_dataset_cache_path}")
-        logging.info(f"{split} dataset (Batch, Candidates, Seq length): "
-                     f"{getattr(self, f'{split}_dataset').tensors[0].shape}")
+                dataset = TensorDataset(*tensor_dataset)
+                datasets.append(dataset)
+
+                torch.save(dataset, str(tensor_dataset_cache_path))
+                logging.info(f"{split.capitalize()} tensor dataset saved to "
+                             f"{tensor_dataset_cache_path}")
+            logging.info(
+                f"{dataset_path} {split} dataset "
+                f"(Batch, Candidates, Seq length): "
+                f"{datasets[-1].tensors[0].shape}")
+        concat_dataset = self.pad_concat_datasets(datasets, pad_id)
+        setattr(self, f'{split}_dataset', concat_dataset)
 
     def prepare_data(self):
         for split in self._SPLITS:
@@ -245,11 +261,35 @@ class ConditionalLM(LightningModule):
                           )
 
     @staticmethod
+    def pad_concat_datasets(datasets: List[TensorDataset],
+                            pad_id: int) -> ConcatDataset:
+        index = {0, 2, 4}
+        max_len = max(dataset.tensors[0].size(-1) for dataset in datasets)
+        for dataset in datasets:
+            tensors = []
+            cur_len = dataset.tensors[0].size(-1)
+            num_pad = max_len - cur_len
+            for i, tensor in enumerate(dataset.tensors):
+                if i in index:
+                    size = tensor.shape[:-1] + (num_pad,)
+                    padded = torch.full(size, pad_id,
+                                        device=tensor.device,
+                                        dtype=tensor.dtype)
+                    tensors.append(torch.cat((tensor, padded), -1))
+                else:
+                    tensors.append(tensor)
+            dataset.tensors = tuple(tensors)
+        concat_dataset = ConcatDataset(datasets)
+        return concat_dataset
+
+
+    @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser])
 
-        parser.add_argument("--dataset_path", type=str,
-                            default="data/multiwoz2.1.processed.json",
+        parser.add_argument("--dataset_paths", type=str,
+                            nargs='+',
+                            default=["data/multiwoz2.1.processed.json"],
                             help="Path of the dataset.")
         parser.add_argument("--model_checkpoint", type=str,
                             default="distilgpt2",
@@ -314,7 +354,7 @@ def build_input_from_segments(
         tokenize_to_ids(type + ' ' + turn)
         for turn, type in zip(history, cycle([USER, SYSTEM]))
     ]
-    next_user_utterance: List[int] = tokenize_to_ids(
+    next_user_utterance_ids: List[int] = tokenize_to_ids(
         USER + ' ' + next_user_utterance)
     reply: List[int] = tokenize_to_ids(SYSTEM + ' ' + reply)
     sequence = [bos]
@@ -323,8 +363,9 @@ def build_input_from_segments(
         assert type in [user, system]
         sequence.extend(seq)
         token_type_ids.extend([type] * len(seq))
-    sequence.extend(next_user_utterance)
-    token_type_ids.extend([user] * len(next_user_utterance))
+    if next_user_utterance.strip():
+        sequence.extend(next_user_utterance_ids)
+        token_type_ids.extend([user] * len(next_user_utterance_ids))
     num_prompt = len(sequence) + 1
     sequence.extend(reply)
     token_type_ids.extend([system] * len(reply))
