@@ -22,8 +22,8 @@ def main(args: Namespace):
         save_last=True,
         save_top_k=2,
         verbose=True,
-        monitor='val_loss',
-        mode='min',
+        monitor='val_bleu',
+        mode='max',
     )
     trainer = Trainer.from_argparse_args(args,
                                          logger=[tb_logger, wandb_logger],
