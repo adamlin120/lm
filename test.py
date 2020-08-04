@@ -19,6 +19,8 @@ def main(args: Namespace):
         hparams_file=args.hparams_file,
     )
     if args.interactive:
+        if torch.cuda.is_available():
+            model.cuda()
         interactive(model)
     else:
         trainer = Trainer.from_argparse_args(args)
@@ -51,10 +53,10 @@ def interactive(model: ConditionalLM):
         return {k: torch.tensor([v], device=model.device)
                 for k, v in instance.items()}
 
-    print('Start a new dialog. '
-          'To end a dialog enter /stop. '
-          'Interrupt to end this program.')
     while True:
+        print('\nStarting a new dialog. '
+              'To end a dialog enter /stop. '
+              'Interrupt to end this program.\n')
         history = []
         while True:
             if history:
