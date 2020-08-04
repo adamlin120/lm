@@ -11,8 +11,7 @@ import torch
 import torch.nn as nn
 from pytorch_lightning import LightningModule
 from torch.utils.data import DataLoader, TensorDataset, ConcatDataset
-from transformers import AdamW, OpenAIGPTDoubleHeadsModel, OpenAIGPTTokenizer, \
-    GPT2DoubleHeadsModel, GPT2Tokenizer
+from transformers import AdamW, GPT2DoubleHeadsModel, GPT2Tokenizer
 from tqdm.auto import tqdm
 from torchtext.data.metrics import bleu_score
 
@@ -44,14 +43,10 @@ class ConditionalLM(LightningModule):
         super().__init__()
         self.hparams = hparams
 
-        is_gpt2 = "gpt2" in self.hparams.model_checkpoint
-        tokenizer_class = GPT2Tokenizer if is_gpt2 else OpenAIGPTTokenizer
-        model_class = GPT2DoubleHeadsModel if is_gpt2 else \
-            OpenAIGPTDoubleHeadsModel
-
-        self.tokenizer = tokenizer_class.from_pretrained(
+        self.tokenizer = GPT2Tokenizer.from_pretrained(
             self.hparams.model_checkpoint)
-        self.model = model_class.from_pretrained(self.hparams.model_checkpoint)
+        self.model = GPT2DoubleHeadsModel.from_pretrained(
+            self.hparams.model_checkpoint)
         # Add special tokens if they are not already added
         add_special_tokens_(self.model, self.tokenizer)
 
@@ -341,7 +336,7 @@ def build_input_from_segments(
         next_user_utterance: str,
         reply: str,
         is_ground_truth_reply: bool,
-        tokenizer: Union[OpenAIGPTTokenizer, GPT2Tokenizer],
+        tokenizer: GPT2Tokenizer,
 ):
     """ Build a sequence of input from 3 segments: history, next usr reply and
     next system reply. """
