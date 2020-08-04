@@ -4,7 +4,7 @@ from argparse import ArgumentParser, Namespace
 from itertools import cycle
 from pathlib import Path
 from random import choice, randrange
-from typing import List, Union
+from typing import List
 from collections import defaultdict
 
 import torch
