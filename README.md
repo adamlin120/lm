@@ -1,9 +1,15 @@
 ## Installation
 
+### Develop
 To install and use the training and inference scripts please clone the repo and install the requirements:
 
 ```bash
 pip install -r requirements.txt
+```
+
+### Deploy
+```bash
+docker image build -t transition:latest .
 ```
 
 ## Preprocess Data and Format
@@ -44,4 +50,12 @@ python trainer.py -h  # To see options for training
 
 ```bash
 python test.py <checkpoint_path> <hparams_file> --interactive
+```
+
+### Docker
+
+```bash
+docker run --rm -it transition:latest
+# To specify checkpoints
+docker run --rm -it -e CHECKPOINT=<checkpoint_path> -e HPARAMS=<hparams_file> transition:latest
 ```
