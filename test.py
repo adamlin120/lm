@@ -7,6 +7,7 @@ from itertools import cycle
 import torch
 from torch.utils.data import DataLoader
 from pytorch_lightning import Trainer
+from transformers import GPT2DoubleHeadsModel, GPT2Tokenizer
 
 from module import ConditionalLM, build_input_from_segments, SYSTEM
 
@@ -14,29 +15,37 @@ logging.basicConfig(level=logging.INFO)
 
 
 def main(args: Namespace):
-    model = ConditionalLM.load_from_checkpoint(
-        checkpoint_path=args.checkpoint_path,
-        hparams_file=args.hparams_file,
-    )
-    if args.interactive:
-        if torch.cuda.is_available():
-            model.cuda()
-        interactive(model)
+    if args.hparams_file is None:
+        if args.interactive:
+            model = GPT2DoubleHeadsModel.from_pretrained(args.checkpoint_path)
+            tokenizer = GPT2Tokenizer.from_pretrained(args.checkpoint_path)
+            interactive(model, tokenizer)
+        else:
+            raise ValueError('If hparams file is not provided, '
+                             'do interactive eval')
     else:
-        trainer = Trainer.from_argparse_args(args)
-        dataset = torch.load(args.tensor_dataset_cache.open('rb'))
-        test_dataloaders = DataLoader(
-            dataset,
-            batch_size=model.hparams.batch_size,
-            num_workers=model.hparams.num_workers,
-            pin_memory=True
+        model = ConditionalLM.load_from_checkpoint(
+            checkpoint_path=args.checkpoint_path,
+            hparams_file=args.hparams_file,
         )
-        trainer.test(model, test_dataloaders)
+        if args.interactive:
+            if torch.cuda.is_available():
+                model.cuda()
+            interactive(model.model)
+        else:
+            trainer = Trainer.from_argparse_args(args)
+            dataset = torch.load(args.tensor_dataset_cache.open('rb'))
+            test_dataloaders = DataLoader(
+                dataset,
+                batch_size=model.hparams.batch_size,
+                num_workers=model.hparams.num_workers,
+                pin_memory=True
+            )
+            trainer.test(model, test_dataloaders)
 
 
-def interactive(model: ConditionalLM):
-    eos_token_id = model.tokenizer.convert_tokens_to_ids('<eos>')
-    tokenizer = model.tokenizer
+def interactive(model: GPT2DoubleHeadsModel, tokenizer: GPT2Tokenizer):
+    eos_token_id = tokenizer.convert_tokens_to_ids('<eos>')
 
     def prepare(history: List[str], cue: str):
         instance = build_input_from_segments(
@@ -69,11 +78,11 @@ def interactive(model: ConditionalLM):
             history.append(user_utternce)
             cue = input('Cues (expected user reply): ')
             tensors = prepare(history, cue)
-            preds = model.model.generate(pad_token_id=50256,
-                                         eos_token_id=eos_token_id,
-                                         max_length=512,
-                                         **tensors)
-            preds_txt = [model.tokenizer.decode(pred) for pred in preds]
+            preds = model.generate(pad_token_id=50256,
+                                   eos_token_id=eos_token_id,
+                                   max_length=512,
+                                   **tensors)
+            preds_txt = [tokenizer.decode(pred) for pred in preds]
             pred_txt = preds_txt[0]
             sys_reply_start = pred_txt.rfind(SYSTEM)
             sys_reply = ' '.join(pred_txt[sys_reply_start:].split()[1:-1])
@@ -83,7 +92,7 @@ def interactive(model: ConditionalLM):
 def parse_args() -> Namespace:
     parser = ArgumentParser(add_help=False)
     parser.add_argument('checkpoint_path')
-    parser.add_argument('hparams_file')
+    parser.add_argument('hparams_file', nargs='?', default=None)
     parser.add_argument('--tensor_dataset_cache', type=Path)
     parser.add_argument('-i', '--interactive', action='store_true')
     parser = ConditionalLM.add_model_specific_args(parser)

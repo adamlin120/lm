@@ -48,6 +48,15 @@ python trainer.py -h  # To see options for training
 
 ## Interactive Evaluation
 
+### From Huggingface S3
+
+```bash
+python test.py <user/model_name> -i
+eg. 
+python test.py ytlin/verr5re0 -i
+```
+
+### From pytorch lightning checkpoint
 ```bash
 python test.py <checkpoint_path> <hparams_file> --interactive
 ```
@@ -57,5 +66,5 @@ python test.py <checkpoint_path> <hparams_file> --interactive
 ```bash
 docker run --rm -it transition:latest
 # To specify checkpoints
-docker run --rm -it -e CHECKPOINT=<checkpoint_path> -e HPARAMS=<hparams_file> transition:latest
+docker run --rm -it -e CHECKPOINT=<checkpoint_path> transition:latest
 ```

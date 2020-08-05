@@ -32,8 +32,7 @@ ENV PATH /home/containeruser/conda/bin:$PATH
 RUN python3 -m pip install --no-cache-dir --upgrade pip && \
     python3 -m pip install --no-cache-dir -r ./transition/requirements.txt
 
-ENV CHECKPOINT "ckpts/verr5re0/last.ckpt"
-ENV HPARAMS "logs/default/version_39/hparams.yaml"
+ENV CHECKPOINT "ytlin/verr5re0"
 
 WORKDIR /home/containeruser/transition/
-CMD python3 test.py ${CHECKPOINT} ${HPARAMS} --interactive
+CMD python3 test.py ${CHECKPOINT} --interactive
