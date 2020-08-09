@@ -6,7 +6,7 @@ from itertools import chain
 
 def main():
     datasets = defaultdict(dict)
-    dir = Path('./multiwoz2.1/')
+    dir = Path('./multiwoz2.1_nadst/')
     paths = {
         'train': dir / 'nadst_train_dials.json',
         'valid': dir / 'nadst_dev_dials.json',
