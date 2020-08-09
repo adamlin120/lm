@@ -6,7 +6,7 @@ DIAL_START = "[STARTCONVERSATION]"
 
 
 def main():
-    path = Path('./sgd_mtk/delex/')
+    path = Path('./sgd/delex/')
     output_path = Path(f"sgd.processed.delex.json")
     output_debug_path = Path(f"sgd.processed.delex.debug.json")
 
