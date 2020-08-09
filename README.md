@@ -13,17 +13,11 @@ docker image build -t transition:latest .
 ```
 
 ## Preprocess Data and Format
-
-Using `persona-chat` as an example.
-
-Other datasets can be run mostly the same way.
-
 ```bash
-bash download_personachat.sh
-python preprocess_persona-chat.py
+bash prepare_data.sh
 ```
 
-The processed file is stores at `data/persona.processed.json`
+The processed file is stores at `data/<dataset_name>.processed.json`
 
 Json format:
 ```json5
