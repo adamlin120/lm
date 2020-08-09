@@ -1,2 +1,0 @@
-download nadst_dev_dials.json, nadst_test_dials.json, nadst_train_dials.json from https://drive.google.com/drive/folders/1qOZIBauQiqbMC7VB-KTVSkH_F-KAE6wm?usp=sharing
-to data/multiwoz2.1
