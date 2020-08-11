@@ -35,4 +35,4 @@ RUN python3 -m pip install --no-cache-dir --upgrade pip && \
 ENV CHECKPOINT "ytlin/verr5re0"
 
 WORKDIR /home/containeruser/transition/
-CMD python3 test.py ${CHECKPOINT} --interactive
+CMD python3 demo.py ${CHECKPOINT}

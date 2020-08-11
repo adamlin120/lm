@@ -49,7 +49,7 @@ or `<user/model_name>` on HuggingFace Model Hub
 eg. `ytlin/verr5re0` or `ytlin/1pm2c7qw_6`
 
 ```bash
-python test.py <checkpoint> -i
+python demo.py <checkpoint>
 ```
 
 ### Docker
