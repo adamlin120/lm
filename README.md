@@ -1,8 +1,9 @@
+
+##  [Experiemntal Logging](https://app.wandb.ai/ytlin/controllable-response?workspace=user-ytlin)
+
 ## Installation
 
 ### Develop
-To install and use the training and inference scripts please clone the repo and install the requirements:
-
 ```bash
 pip install -r requirements.txt
 ```
@@ -12,7 +13,7 @@ pip install -r requirements.txt
 docker image build -t transition:latest .
 ```
 
-## Preprocess Data and Format
+## Data
 ```bash
 bash prepare_data.sh
 ```
@@ -32,7 +33,7 @@ Json format:
 ```
 
 
-## Using the training script
+## Training
 
 The training script can be used in single GPU or multi GPU settings:
 
@@ -40,25 +41,19 @@ The training script can be used in single GPU or multi GPU settings:
 python trainer.py -h  # To see options for training
 ```
 
-## Interactive Evaluation
+## Interactive Demo
 
-### From Huggingface S3
+CHECKPOINT could be local file dir to `save_pretrained` in `transformers`  output 
+or `<user/model_name>` on HuggingFace Model Hub
+
+eg. `ytlin/verr5re0` or `ytlin/1pm2c7qw_6`
 
 ```bash
-python test.py <user/model_name> -i
-eg. 
-python test.py ytlin/verr5re0 -i
-```
-
-### From pytorch lightning checkpoint
-```bash
-python test.py <checkpoint_path> <hparams_file> --interactive
+python test.py <checkpoint> -i
 ```
 
 ### Docker
 
 ```bash
-docker run --rm -it transition:latest
-# To specify checkpoints
-docker run --rm -it -e CHECKPOINT=<checkpoint_path> transition:latest
+docker run --rm -it -e CHECKPOINT=<checkpoint> transition:latest
 ```
