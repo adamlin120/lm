@@ -144,6 +144,8 @@ class ConditionalLM(LightningModule):
         assert split in {'train', 'valid', 'test'}
         datasets = []
         pad_id = self.tokenizer.convert_tokens_to_ids(PAD)
+        if not hasattr(self.hparams, 'dataset_paths'):
+            self.hparams.dataset_paths = [self.hparams.dataset_path]
         for dataset_path in self.hparams.dataset_paths:
             tensor_dataset_cache_path = Path(
                 f'tensor_dataset_cache_{split}_'
@@ -277,7 +279,6 @@ class ConditionalLM(LightningModule):
         concat_dataset = ConcatDataset(datasets)
         return concat_dataset
 
-
     @staticmethod
     def add_model_specific_args(parent_parser):
         parser = ArgumentParser(parents=[parent_parser])
@@ -358,9 +359,9 @@ def build_input_from_segments(
         assert type in [user, system]
         sequence.extend(seq)
         token_type_ids.extend([type] * len(seq))
-    if next_user_utterance.strip():
-        sequence.extend(next_user_utterance_ids)
-        token_type_ids.extend([user] * len(next_user_utterance_ids))
+    # if next_user_utterance.strip():
+    #     sequence.extend(next_user_utterance_ids)
+    #     token_type_ids.extend([user] * len(next_user_utterance_ids))
     num_prompt = len(sequence) + 1
     sequence.extend(reply)
     token_type_ids.extend([system] * len(reply))

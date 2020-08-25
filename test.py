@@ -31,7 +31,7 @@ def parse_args() -> Namespace:
     parser = ArgumentParser(add_help=False)
     parser.add_argument('checkpoint_path')
     parser.add_argument('hparams_file')
-    parser.add_argument('--tensor_dataset_cache', type=Path)
+    parser.add_argument('tensor_dataset_cache', type=Path)
     parser = ConditionalLM.add_model_specific_args(parser)
     parser = Trainer.add_argparse_args(parser)
     return parser.parse_args()

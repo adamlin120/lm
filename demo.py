@@ -4,21 +4,22 @@ from typing import List
 from itertools import cycle
 
 import torch
-from pytorch_lightning import Trainer
-from transformers import GPT2DoubleHeadsModel, GPT2Tokenizer
+import ipdb
+from transformers import GPT2Tokenizer, GPT2LMHeadModel
 
-from module import ConditionalLM, build_input_from_segments, SYSTEM
+from module import build_input_from_segments, SYSTEM, PAD, EOS
 
 logging.basicConfig(level=logging.INFO)
 
 
 def main(args: Namespace):
-    model = GPT2DoubleHeadsModel.from_pretrained(args.checkpoint_path)
+    model = GPT2LMHeadModel.from_pretrained(args.checkpoint_path).eval()
     tokenizer = GPT2Tokenizer.from_pretrained(args.checkpoint_path)
     if torch.cuda.is_available():
         model.cuda()
 
-    eos_token_id = tokenizer.convert_tokens_to_ids('<eos>')
+    eos_token_id = tokenizer.convert_tokens_to_ids(EOS)
+    pad_token_id = tokenizer.convert_tokens_to_ids(PAD)
 
     def prepare(history: List[str], cue: str):
         instance = build_input_from_segments(
@@ -51,9 +52,17 @@ def main(args: Namespace):
             history.append(user_utternce)
             cue = input('Cues (expected user reply): ')
             tensors = prepare(history, cue)
-            preds = model.generate(pad_token_id=50256,
+            tensors['input_ids'] = tensors['input_ids'].repeat(2, 1)
+            tensors['token_type_ids'] = tensors['token_type_ids'].repeat(2, 1)
+            preds = model.generate(pad_token_id=pad_token_id,
                                    eos_token_id=eos_token_id,
                                    max_length=512,
+                                   # top_k=50,
+                                   # top_p=0.95,
+                                   num_beams=5,
+                                   no_repeat_ngram_size=2,
+                                   early_stopping=True,
+                                   num_return_sequences=5,
                                    **tensors)
             preds_txt = [tokenizer.decode(pred) for pred in preds]
             pred_txt = preds_txt[0]
@@ -65,10 +74,9 @@ def main(args: Namespace):
 def parse_args() -> Namespace:
     parser = ArgumentParser(add_help=False)
     parser.add_argument('checkpoint_path')
-    parser = ConditionalLM.add_model_specific_args(parser)
-    parser = Trainer.add_argparse_args(parser)
     return parser.parse_args()
 
 
 if __name__ == '__main__':
-    main(parse_args())
+    with ipdb.launch_ipdb_on_exception():
+        main(parse_args())
