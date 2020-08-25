@@ -24,7 +24,7 @@ def main():
                 assert len(turns) % 2
                 datasets[split][dial_idx] = turns
     assert all(split in datasets for split in ['train', 'valid'])
-    Path('multiwoz2.1.processed.json').write_text(json.dumps(datasets,
+    Path('multiwoz2.1.processed.domainchange.json').write_text(json.dumps(datasets,
                                                              indent=2))
 
 
