@@ -359,9 +359,9 @@ def build_input_from_segments(
         assert type in [user, system]
         sequence.extend(seq)
         token_type_ids.extend([type] * len(seq))
-    # if next_user_utterance.strip():
-    #     sequence.extend(next_user_utterance_ids)
-    #     token_type_ids.extend([user] * len(next_user_utterance_ids))
+    if next_user_utterance.strip():
+        sequence.extend(next_user_utterance_ids)
+        token_type_ids.extend([user] * len(next_user_utterance_ids))
     num_prompt = len(sequence) + 1
     sequence.extend(reply)
     token_type_ids.extend([system] * len(reply))
