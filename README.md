@@ -52,6 +52,13 @@ eg. `ytlin/verr5re0` or `ytlin/1pm2c7qw_6`
 python demo.py <checkpoint>
 ```
 
+## Generate Sample
+```bash
+python generate_response.py <checkpoint> <input dialogues path> <output path>
+# eg
+python generate_response.py ytlin/1klqb7u9_35 ./data/human_eval/chit_to_task_cue.txt ./data/human_eval/chit_to_task_cue.txt.gen
+```
+
 ### Docker
 
 ```bash
