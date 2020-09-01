@@ -13,8 +13,7 @@ from tqdm.auto import tqdm
 
 def _parse_args() -> Namespace:
     parser = ArgumentParser(description="Delexicalise data set")
-    parser.add_argument('folder', help="folder where the json files are", type=Path)
-    parser.add_argument('output', help="output text file", type=Path)
+    parser.add_argument('dataset_folder', help="folder where the json files are", type=Path)
     return parser.parse_args()
 
 
@@ -51,25 +50,28 @@ def scan_replace(
 def main(args: Namespace):
     inflect_engine = engine()
 
-    dump = []
+    for split in ['train', 'dev', 'test']:
+        folder = args.dataset_folder / split
+        dump = []
 
-    for path in tqdm(args.folder.glob('dialogues_*.json')):
-        dialogues = json.loads(path.read_text())
-        for j, dialog in enumerate(dialogues):
-            dump.append("[STARTCONVERSATION]")
-            for k, turn in enumerate(dialog["turns"]):
-                utterance = turn['utterance'].replace("+", "00").replace("$", "dollars")
-                frames = turn['frames'][0]
-                if k % 2 == 0:
-                    slot_values = frames['state']['slot_values']
-                    for x in slot_values:
-                        utterance = scan_replace(utterance, slot_values[x], x, inflect_engine)
-                else:
-                    for action in frames["actions"]:
-                        utterance = scan_replace(utterance, action["values"], action["slot"], inflect_engine)
+        for path in tqdm(folder.glob('dialogues_*.json')):
+            dialogues = json.loads(path.read_text())
+            for j, dialog in enumerate(dialogues):
+                dump.append("[STARTCONVERSATION]")
+                for k, turn in enumerate(dialog["turns"]):
+                    utterance = turn['utterance'].replace("+", "00").replace("$", "dollars")
+                    frames = turn['frames'][0]
+                    if k % 2 == 0:
+                        slot_values = frames['state']['slot_values']
+                        for x in slot_values:
+                            utterance = scan_replace(utterance, slot_values[x], x, inflect_engine)
+                    else:
+                        for action in frames["actions"]:
+                            utterance = scan_replace(utterance, action["values"], action["slot"], inflect_engine)
 
-                dump.append(utterance)
-    args.output.write_text('\n'.join(dump))
+                    dump.append(utterance)
+        output = args.dataset_folder / f'{split}.txt'
+        output.write_text('\n'.join(dump))
 
 
 if __name__ == '__main__':

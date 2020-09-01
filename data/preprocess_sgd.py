@@ -1,19 +1,27 @@
 import json
 from pathlib import Path
+from argparse import ArgumentParser
 
 
 DIAL_START = "[STARTCONVERSATION]"
 
 
+def _parse_args():
+    parser = ArgumentParser()
+    parser.add_argument('data_path', type=Path)
+    parser.add_argument('version', type=str)
+    return parser.parse_args()
+
+
 def main():
-    path = Path('./sgd/delex/')
-    output_path = Path(f"sgd.processed.delex.json")
-    output_debug_path = Path(f"sgd.processed.delex.debug.json")
+    args = _parse_args()
+    output_path = Path(f"sgd.{args.version}.processed.delex.json")
+    output_debug_path = Path(f"sgd.{args.version}.processed.delex.debug.json")
 
     split_files = {
-        'train': path / 'train.txt',
-        'valid': path / 'dev.txt',
-        'test': path / 'test.txt',
+        'train': args.data_path / 'train.txt',
+        'valid': args.data_path / 'dev.txt',
+        'test': args.data_path / 'test.txt',
     }
     datasets = {
         split: {i: dial.strip().splitlines()
