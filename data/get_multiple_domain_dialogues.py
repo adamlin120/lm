@@ -20,10 +20,13 @@ def main(args):
         ]))
         multiple = [d for d in data if len(d['services']) > 1]
         single = [d for d in data if len(d['services']) == 1]
+        all_dir = args.output_folder / 'all' / split
         multiple_dir = args.output_folder / 'multiple' / split
         single_dir = args.output_folder / 'single' / split
+        all_dir.mkdir(parents=True, exist_ok=True)
         multiple_dir.mkdir(parents=True, exist_ok=True)
         single_dir.mkdir(parents=True, exist_ok=True)
+        (all_dir / 'dialogues_001.json').write_text(json.dumps(data))
         (multiple_dir / 'dialogues_001.json').write_text(json.dumps(multiple))
         (single_dir / 'dialogues_001.json').write_text(json.dumps(single))
 
