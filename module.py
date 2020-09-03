@@ -288,7 +288,7 @@ class ConditionalLM(LightningModule):
                             default=["data/multiwoz2.1.processed.json"],
                             help="Path of the dataset.")
         parser.add_argument("--model_checkpoint", type=str,
-                            default="distilgpt2",
+                            default="microsoft/DialoGPT-small",
                             help="Path, url or short name of the model")
         parser.add_argument("--max_history", type=int, default=2,
                             help="Number of previous exchanges to keep in "
