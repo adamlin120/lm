@@ -62,7 +62,7 @@ def main(args: Namespace):
                     utterance = turn['utterance'].replace("+", "00").replace("$", "dollars")
                     frames = turn['frames'][0]
                     if turn['speaker'] == 'USER':
-                        for slot_name, slot_value in frames['state']['slot_values']:
+                        for slot_name, slot_value in frames['state']['slot_values'].items():
                             utterance = scan_replace(utterance, slot_value, slot_name, inflect_engine)
                     else:
                         for action in frames["actions"]:
