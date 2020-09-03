@@ -56,15 +56,14 @@ def main(args: Namespace):
 
         for path in tqdm(folder.glob('dialogues_*.json')):
             dialogues = json.loads(path.read_text())
-            for j, dialog in enumerate(dialogues):
+            for dialog in dialogues:
                 dump.append("[STARTCONVERSATION]")
-                for k, turn in enumerate(dialog["turns"]):
+                for turn in dialog["turns"]:
                     utterance = turn['utterance'].replace("+", "00").replace("$", "dollars")
                     frames = turn['frames'][0]
-                    if k % 2 == 0:
-                        slot_values = frames['state']['slot_values']
-                        for x in slot_values:
-                            utterance = scan_replace(utterance, slot_values[x], x, inflect_engine)
+                    if turn['speaker'] == 'USER':
+                        for slot_name, slot_value in frames['state']['slot_values']:
+                            utterance = scan_replace(utterance, slot_value, slot_name, inflect_engine)
                     else:
                         for action in frames["actions"]:
                             utterance = scan_replace(utterance, action["values"], action["slot"], inflect_engine)
