@@ -19,11 +19,11 @@ def main(args: Namespace):
 
 def parse_args() -> Namespace:
     parser = ArgumentParser(add_help=False)
-    parser.add_argument('checkpoint_path')
-    parser.add_argument('hparams_file')
-    parser.add_argument('save_dir', type=Path)
+    parser.add_argument("checkpoint_path")
+    parser.add_argument("hparams_file")
+    parser.add_argument("save_dir", type=Path)
     return parser.parse_args()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main(parse_args())

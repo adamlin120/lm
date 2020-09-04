@@ -11,24 +11,24 @@ logging.basicConfig(level=logging.INFO)
 
 
 def main(args: Namespace):
-    tb_logger = loggers.TensorBoardLogger('logs/')
-    wandb_logger = loggers.WandbLogger(save_dir='logs/',
-                                       project="controllable-response"
-                                       )
+    tb_logger = loggers.TensorBoardLogger("logs/")
+    wandb_logger = loggers.WandbLogger(
+        save_dir="logs/", project="controllable-response"
+    )
     assert wandb_logger.experiment.id
     checkpoint_callback = ModelCheckpoint(
-        filepath=os.path.join('ckpts', wandb_logger.experiment.id,
-                              '{epoch}-{val_loss:.4f}-{val_bleu:.4f}'),
+        filepath=os.path.join(
+            "ckpts", wandb_logger.experiment.id, "{epoch}-{val_loss:.4f}-{val_bleu:.4f}"
+        ),
         save_last=True,
         save_top_k=2,
         verbose=True,
-        monitor='val_bleu',
-        mode='max',
+        monitor="val_bleu",
+        mode="max",
     )
-    trainer = Trainer.from_argparse_args(args,
-                                         logger=[tb_logger, wandb_logger],
-                                         checkpoint_callback=checkpoint_callback
-                                         )
+    trainer = Trainer.from_argparse_args(
+        args, logger=[tb_logger, wandb_logger], checkpoint_callback=checkpoint_callback
+    )
     model = ConditionalLM(args)
     trainer.fit(model)
     trainer.test()
@@ -36,20 +36,21 @@ def main(args: Namespace):
 
 def parse_args():
     parser = ArgumentParser(add_help=False)
-    parser.add_argument('--seed', type=int, default=13)
+    parser.add_argument("--seed", type=int, default=13)
 
     parser = ConditionalLM.add_model_specific_args(parser)
     parser = Trainer.add_argparse_args(parser)
 
-    parser.set_defaults(accumulate_grad_batches=4,
-                        gradient_clip_val=1.0,
-                        )
+    parser.set_defaults(
+        accumulate_grad_batches=4,
+        gradient_clip_val=1.0,
+    )
 
     args = parser.parse_args()
     return args
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parse_args()
     seed_everything(args.seed)
     main(args)

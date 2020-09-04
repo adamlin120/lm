@@ -17,25 +17,25 @@ def main(args: Namespace):
         hparams_file=args.hparams_file,
     )
     trainer = Trainer.from_argparse_args(args)
-    dataset = torch.load(args.tensor_dataset_cache.open('rb'))
+    dataset = torch.load(args.tensor_dataset_cache.open("rb"))
     test_dataloaders = DataLoader(
         dataset,
         batch_size=model.hparams.batch_size,
         num_workers=model.hparams.num_workers,
-        pin_memory=True
+        pin_memory=True,
     )
     trainer.test(model, test_dataloaders)
 
 
 def parse_args() -> Namespace:
     parser = ArgumentParser(add_help=False)
-    parser.add_argument('checkpoint_path')
-    parser.add_argument('hparams_file')
-    parser.add_argument('tensor_dataset_cache', type=Path)
+    parser.add_argument("checkpoint_path")
+    parser.add_argument("hparams_file")
+    parser.add_argument("tensor_dataset_cache", type=Path)
     parser = ConditionalLM.add_model_specific_args(parser)
     parser = Trainer.add_argparse_args(parser)
     return parser.parse_args()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main(parse_args())
