@@ -7,4 +7,4 @@ bash download_taskmaster.sh
 python preprocess_dailydialog.py
 python preprocess_multiwoz.py
 python preprocess_persona-chat.py
-python preprocess_sgd.py
+python preprocess_sgd.py sgd/delex/ all
